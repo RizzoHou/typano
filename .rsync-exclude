@@ -1,0 +1,6 @@
+.git/
+.build/
+*.app
+.DS_Store
+# Sound banks live only on the Mac: hundreds of MB, fetched by Scripts/fetch-sounds.sh
+Sounds/

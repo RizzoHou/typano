@@ -1,0 +1,13 @@
+# Build artifacts
+.build/
+*.app
+.DS_Store
+
+# Downloaded sound banks
+Sounds/
+
+# User-edit-only files
+notes.md
+cof.md
+cot.md
+attachments/
