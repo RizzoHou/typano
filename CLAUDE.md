@@ -36,10 +36,13 @@ These are load-bearing and easy to regress:
 
 - Filter `event.isARepeat` on keyDown, or held notes machine-gun via macOS key repeat.
 - `⌘` **keyDown** goes to the menu; `⌘` **keyUp** must still reach `onKeyUp`, or the note is stranded and the key stays dead because `held` never loses the code.
-- **Right ⌘ latches, it never holds.** A held ⌘ routes every following keystroke to the menu — no notes, and `Q` quits the app. The toggle fires on release and only if nothing else was pressed during the hold, so right ⌘ stays usable as a menu modifier.
+- **Right ⌘ latches, it never holds.** A held ⌘ routes every following keystroke to the menu — no notes, and `Q` quits the app. The toggle fires on release and only if nothing else was pressed during the hold.
+- **Right ⌘ is isolated from the menu** while it is the only ⌘ down (`KeyboardMonitor.rightCommandIsolated`), so holding it plays notes instead of firing ⌘H / ⌘Q. Consequence to keep in mind: **shortcuts no longer answer to right ⌘** — ⌘L, ⌘R, ⌘1–4 are left-⌘ only. `leftCommandDown` must stay tracked from `flagsChanged`, or the isolation swallows real shortcuts.
+- **A local monitor cannot reach ⌘-Tab / ⌘-Space** — WindowServer handles those before any app. Only the HID remap (`Scripts/remap.sh on rightcmd`, right ⌘ → F16) removes them. F16 is bound to the same `.sustainLatch`, and unlike right ⌘ it is an ordinary key, so `Instrument` toggles the latch on its keyDown rather than from the monitor's tap detection.
 - `.shift` cannot distinguish left from right Shift; read the device-dependent bits (`KC.DeviceFlag`).
 - **Modifier `flagsChanged` events are reported but not swallowed** — except Shift, which plays a note. The rollover tester can only measure what reaches `held`, and swallowing the rest desyncs the system's idea of which modifiers are down.
-- Caps Lock is a toggle with no key-up. It is bound as **F13** and requires `Scripts/capslock-remap.sh on`.
+- Caps Lock is a toggle with no key-up. It is bound as **F13** and requires `Scripts/remap.sh on`.
+- **`hidutil` replaces the whole `UserKeyMapping` table on every call**, so all remaps must be set in one command — `Scripts/remap.sh` exists for that reason and `capslock-remap.sh` is now a shim forwarding to it.
 - The local `NSEvent` monitor needs no Accessibility permission. Keep it that way — do not reach for `CGEventTap`.
 - **Anything that silences the instrument must clear `Instrument.held` too.** `Performer.allNotesOff()` cannot reach it; that is what `Instrument.panic()` is for.
 
@@ -48,7 +51,7 @@ These are load-bearing and easy to regress:
 - `TrackpadSurface` is the window's `contentView` with the SwiftUI tree as a subview, because indirect touches go to the **first responder**, not to whatever is under the pointer.
 - **`wantsRestingTouches = true` is load-bearing.** Without it a motionless finger is filtered out as a resting touch — which is the entire gesture this surface exists for.
 - Zones are live only while the **instrument window is key**. In the preferences window the trackpad is an ordinary pointer, which is what makes the sliders draggable while the instrument keeps sounding.
-- Pointer-event swallowing is scoped to the instrument window. Widen it and the menu bar stops responding to clicks.
+- Pointer-event swallowing is scoped to the instrument window's **content view**, not the window. Scoping it to the window kills the close and minimise buttons; widening it past the window kills the menu bar. Cursor hiding follows the same rect, so the pointer reappears the moment it reaches the title bar.
 - `NSTouch` needs no Accessibility permission either — same bargain as the key monitor. Do not reach for private `MultitouchSupport`.
 
 ## Sound

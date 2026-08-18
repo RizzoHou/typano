@@ -69,8 +69,11 @@ enum KC {
     static let rightCommand: UInt16 = 54
     static let function: UInt16 = 63
 
-    /// Caps Lock remapped by `Scripts/capslock-remap.sh`.
+    /// Caps Lock remapped by `Scripts/remap.sh`.
     static let f13: UInt16 = 105
+    /// Right ⌘ remapped by `Scripts/remap.sh`, which strips its modifier
+    /// meaning at the HID level so even WindowServer shortcuts stop firing.
+    static let f16: UInt16 = 106
 
     static let left: UInt16 = 123
     static let right: UInt16 = 124

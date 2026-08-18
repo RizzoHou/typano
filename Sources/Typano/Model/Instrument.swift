@@ -39,6 +39,9 @@ final class Instrument: ObservableObject {
     @Published private(set) var timbreIndex = 0
     @Published private(set) var soundSource = "loading…"
     @Published private(set) var capsLockRemapped = true
+    /// Set the first time keycode 106 arrives, i.e. `Scripts/remap.sh on` has
+    /// stripped right ⌘ of its modifier meaning.
+    @Published private(set) var rightCommandRemapped = false
     @Published private(set) var stats = RolloverStats()
     @Published var showRollover = false
 
@@ -177,27 +180,43 @@ final class Instrument: ObservableObject {
             && settings.trackpadSustainEnabled
             && !showRollover
             && !trackpadContacts.isEmpty
+            && pointerInPlayArea
         guard shouldHide != cursorHidden else { return }
         cursorHidden = shouldHide
         if shouldHide { NSCursor.hide() } else { NSCursor.unhide() }
     }
 
+    /// The playable area is the content view, which excludes the title bar.
+    /// Everything below rests on that split: a pointer over the title bar keeps
+    /// its cursor and keeps its clicks, so the close and minimise buttons stay
+    /// reachable while a thumb is on the pad.
+    private var pointerInPlayArea: Bool {
+        guard let surface = trackpad, let window = surface.window else { return false }
+        return surface.frame.contains(window.convertPoint(fromScreen: NSEvent.mouseLocation))
+    }
+
     /// A tap on the trackpad must not press whatever the cursor happens to be
     /// sitting on.
     ///
-    /// Scoped to the instrument window: events with another window — the menu
-    /// bar above all — are left alone, or turning trackpad sustain on would
-    /// make the menus unclickable. The rollover overlay is exempt too, so its
-    /// reset button keeps working.
+    /// Scoped to the instrument window's *content view*: events with another
+    /// window — the menu bar above all — are left alone, or turning trackpad
+    /// sustain on would make the menus unclickable, and events in the title bar
+    /// are left alone, or the close and minimise buttons stop responding. The
+    /// rollover overlay is exempt too, so its reset button keeps working.
     private func shouldSwallowPointer(_ event: NSEvent) -> Bool {
+        // The pointer moved, so the cursor may have crossed into or out of the
+        // playable area.
+        updateCursorVisibility()
         guard instrumentFocused, settings.trackpadSustainEnabled, !showRollover else { return false }
         guard let surface = trackpad, let window = surface.window else { return false }
-        return event.window === window
+        guard event.window === window else { return false }
+        return surface.frame.contains(event.locationInWindow)
     }
 
     // MARK: - Key handling
 
     private func keyDown(_ code: UInt16) {
+        if code == KC.f16 { rightCommandRemapped = true }
         guard !held.contains(code) else { return }
         held.insert(code)
         stats.record(held)
@@ -214,7 +233,10 @@ final class Instrument: ObservableObject {
             spaceHeld = true
             refreshPedal()
         case .sustainLatch:
-            break   // driven by the monitor's tap detection, not by the press
+            // Right ⌘ is a modifier, so its latch is driven by the monitor's
+            // tap detection. Remapped to F16 it is an ordinary key, and the
+            // press itself is the tap.
+            if code != KC.rightCommand { toggleLatch() }
         case .transpose(let delta):
             transpose = max(-12, min(12, transpose + delta))
         case .octave(let delta):
@@ -352,7 +374,8 @@ final class Instrument: ObservableObject {
     /// Right ⌘ lights while latched, not only while physically down — the
     /// whole point of a latch is that the finger has left the key.
     func isLit(_ code: UInt16) -> Bool {
-        held.contains(code) || (code == KC.rightCommand && sustainLatched)
+        held.contains(code)
+            || (code == KC.rightCommand && (sustainLatched || held.contains(KC.f16)))
     }
 
     func caption(for code: UInt16) -> Caption? {

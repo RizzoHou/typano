@@ -53,7 +53,9 @@ The space bar is the obvious pedal and the worst one: it ghosts against the melo
 
 **The trackpad is the primary pedal.** One vertical divider splits it in two; resting a thumb on the sustain half holds the pedal, lifting it releases. It sits where the thumbs already are, and resting is less tiring than holding a key down for a whole phrase. The other half is deliberately inert — somewhere to park the second thumb. The divider position and which side sustains are both adjustable. Trackpad zones are live only while the instrument window is in front; in the preferences window the trackpad is an ordinary pointer, which is what makes its sliders draggable while the instrument keeps sounding.
 
-**Right `⌘` latches** rather than holds, and it has to: a held `⌘` routes every following keystroke to the menu bar instead of the instrument, so `Q` would quit the app mid-phrase. The toggle fires on release and only if nothing else was pressed in between, so right `⌘` still works as a normal menu modifier.
+**Right `⌘` latches** rather than holds, and it has to: a held `⌘` routes every following keystroke to the menu bar instead of the instrument, so `Q` would quit the app mid-phrase. The toggle fires on release and only if nothing else was pressed in between.
+
+To make holding it harmless anyway, the app keeps right `⌘` away from the menu while it is the only `⌘` down — right `⌘` + `H` plays a note instead of hiding the app. Left `⌘` is untouched, so every shortcut in the table still works; the cost is that shortcuts no longer answer to right `⌘`. `⌘`-Tab and `⌘`-Space are handled by WindowServer before any app sees them and survive this; `Scripts/remap.sh on` removes those too, by remapping right `⌘` to F16 at the HID level so it is not a modifier anywhere. The app binds F16 to the same latch, so the key behaves identically either way.
 
 ### Preferences (`⌘,`)
 
@@ -69,7 +71,7 @@ Requires Xcode's toolchain. The scripts select it per-invocation via `DEVELOPER_
 
 ```bash
 Scripts/fetch-sounds.sh          # once — downloads the piano sound bank (~310 MB)
-Scripts/capslock-remap.sh on     # once per boot — see below
+Scripts/remap.sh on              # once per boot — see below
 Scripts/run.sh                   # build, bundle, launch
 ```
 
@@ -82,9 +84,12 @@ Diagnostics:
 .build/arm64-apple-macosx/release/Typano --try-instrument <path>    # probe one instrument file
 ```
 
-### Caps Lock
+### Key remaps
 
-Caps Lock cannot be a note key as shipped: it is a toggle that emits no key-up event, so note duration is undefined, and it has a hardware debounce. `Scripts/capslock-remap.sh on` remaps it to F13 via `hidutil` — no `sudo`, reversible with `off`, and reset by a reboot. Until you run it, B3 is simply unavailable and the app says so.
+`Scripts/remap.sh on` applies both remaps Typano wants, via `hidutil` — no `sudo`, reversible with `off`, and reset by a reboot. Name one to apply it alone (`on caps`, `on rightcmd`); `hidutil` replaces the whole mapping table on every call, which is why both live in one script.
+
+- **Caps Lock → F13.** Caps Lock cannot be a note key as shipped: it is a toggle that emits no key-up event, so note duration is undefined, and it has a hardware debounce. Until you remap it, B3 is simply unavailable and the app says so.
+- **Right `⌘` → F16.** Optional. Strips right `⌘` of its modifier meaning everywhere so no shortcut at any level answers to it. Left `⌘` is untouched. The cost is that right `⌘` stops being `⌘` in every other app until you run `off` or reboot.
 
 ## Sound
 

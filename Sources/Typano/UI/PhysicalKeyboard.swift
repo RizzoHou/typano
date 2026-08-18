@@ -28,7 +28,7 @@ enum PhysicalKeyboard {
         ],
         [
             // Caps Lock is bound as F13, which is what arrives once
-            // Scripts/capslock-remap.sh has run.
+            // Scripts/remap.sh has run.
             k(KC.f13, "caps", 1.75), k(KC.a, "A"), k(KC.s, "S"), k(KC.d, "D"), k(KC.f, "F"),
             k(KC.g, "G"), k(KC.h, "H"), k(KC.j, "J"), k(KC.k, "K"), k(KC.l, "L"),
             k(KC.semicolon, ";"), k(KC.quote, "'"), k(KC.ret, "return", 2.25),

@@ -22,10 +22,12 @@ final class KeyboardMonitor {
     private var monitor: Any?
 
     /// Right ⌘ is a latch, so the toggle fires on release — and only if the key
-    /// went down and came back up without anything else being pressed. That
-    /// keeps right ⌘ usable as an ordinary menu modifier.
+    /// went down and came back up without anything else being pressed.
     private var rightCommandDown = false
     private var rightCommandClean = false
+    /// Tracked separately because the cooked `.command` flag cannot tell the
+    /// two ⌘ keys apart, and only the left one still drives the menu.
+    private var leftCommandDown = false
 
     private static let pointerTypes: Set<NSEvent.EventType> = [
         .mouseMoved,
@@ -51,6 +53,18 @@ final class KeyboardMonitor {
         }
     }
 
+    /// Right ⌘ is an instrument key, so while it is the only ⌘ down the
+    /// keystroke belongs to the instrument. Without this, holding it turns the
+    /// whole melody zone into menu shortcuts — right ⌘ + H hides the app,
+    /// right ⌘ + Q quits it — which is what made the key untestable.
+    ///
+    /// Left ⌘ is untouched, so every real shortcut still works.
+    private var rightCommandIsolated: Bool { rightCommandDown && !leftCommandDown }
+
+    private func belongsToMenu(_ event: NSEvent) -> Bool {
+        event.modifierFlags.contains(.command) && !rightCommandIsolated
+    }
+
     private func handle(_ event: NSEvent) -> NSEvent? {
         switch event.type {
         case .keyDown:
@@ -62,8 +76,7 @@ final class KeyboardMonitor {
             // ⌘-combination rather than a latch tap.
             if rightCommandDown { rightCommandClean = false }
 
-            // ⌘ combinations belong to the menu, never to the instrument.
-            if event.modifierFlags.contains(.command) { return event }
+            if belongsToMenu(event) { return event }
 
             onKeyDown?(event.keyCode)
             return nil
@@ -73,7 +86,7 @@ final class KeyboardMonitor {
             // strand the note and leave the key permanently dead, because
             // `held` never lost the code.
             onKeyUp?(event.keyCode)
-            return event.modifierFlags.contains(.command) ? event : nil
+            return belongsToMenu(event) ? event : nil
 
         case .flagsChanged:
             return handleFlags(event)
@@ -109,13 +122,18 @@ final class KeyboardMonitor {
         guard let mask = KC.DeviceFlag.mask(for: code) else { return event }
         let down = event.modifierFlags.rawValue & mask != 0
 
-        if code == KC.rightCommand { trackRightCommand(down: down) }
+        switch code {
+        case KC.rightCommand: trackRightCommand(down: down)
+        case KC.command:      leftCommandDown = down
+        default:              break
+        }
 
         if down { onKeyDown?(code) } else { onKeyUp?(code) }
 
         // Shift plays a note, so its event stops here. Everything else is
         // passed through — the system's own view of which modifiers are down
-        // has to stay correct or ⌘ shortcuts break.
+        // has to stay correct, and swallowing right ⌘ here would desync it
+        // without preventing any shortcut (the flags ride on the key event).
         return (code == KC.shift || code == KC.rightShift) ? nil : event
     }
 
@@ -132,9 +150,11 @@ final class KeyboardMonitor {
     }
 
     /// Called when the app loses focus: a modifier released while we were not
-    /// looking would otherwise leave the tap detector armed.
+    /// looking would otherwise leave the tap detector armed, or leave the
+    /// instrument believing a ⌘ is still down.
     func resetTransientState() {
         rightCommandDown = false
         rightCommandClean = false
+        leftCommandDown = false
     }
 }

@@ -19,6 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.titlebarAppearsTransparent = true
         window.backgroundColor = NSColor(Palette.background)
         window.contentView = instrumentSurface()
+        // The cursor is hidden while a thumb is on the pad, so the monitor has
+        // to keep seeing where the pointer goes in order to bring it back when
+        // it reaches the title bar.
+        window.acceptsMouseMovedEvents = true
         window.center()
         window.makeKeyAndOrderFront(nil)
 
@@ -128,18 +132,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ringing.
     @objc private func showPreferences() {
         if preferences == nil {
-            let panel = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 440, height: 500),
-                styleMask: [.titled, .closable],
-                backing: .buffered,
-                defer: false
-            )
+            // Built around the hosting controller rather than a fixed rect, so
+            // the window is exactly as tall as the settings it holds. A hard
+            // -coded 500 pt left the content stranded in the top half.
+            let controller = NSHostingController(
+                rootView: PreferencesView(instrument: instrument, settings: instrument.settings))
+            controller.view.frame.size = controller.view.fittingSize
+
+            let panel = NSWindow(contentViewController: controller)
+            panel.styleMask = [.titled, .closable]
             panel.title = "Typano Preferences"
             panel.titlebarAppearsTransparent = true
             panel.backgroundColor = NSColor(Palette.background)
             panel.isReleasedWhenClosed = false
-            panel.contentView = NSHostingView(
-                rootView: PreferencesView(instrument: instrument, settings: instrument.settings))
+            panel.setContentSize(controller.view.fittingSize)
             panel.center()
             preferences = panel
         }

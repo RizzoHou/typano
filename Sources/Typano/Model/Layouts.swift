@@ -40,6 +40,9 @@ enum Layouts {
         [
             KC.space:        .pedal,
             KC.rightCommand: .sustainLatch,
+            // Same key after `Scripts/remap.sh on`, which strips right ⌘ of
+            // its modifier meaning at the HID level.
+            KC.f16:          .sustainLatch,
             KC.up:           .accidental(1),
             KC.down:         .accidental(-1),
             KC.left:         .transpose(-1),
