@@ -15,9 +15,9 @@ Sync before **every** remote command batch; the usual failure is debugging a sta
 
 ## What can and cannot be verified here
 
-Compilation, and `Typano --check-sound` / `--try-instrument <path>` (headless, runnable over ssh).
+Compilation, and `Typano --check-sound` / `--try-instrument <path>` (headless, runnable over ssh). `--check-sound` starts the **real** `AudioEngine`, not just a throwaway sampler, so it does prove the effect chain instantiates and connects, and it prints the level→dB curve.
 
-**Not verifiable from Linux:** latency, timbre, key rollover, light effects, anything about how it feels. The user is the only sensor for those — ask, don't assert.
+**Not verifiable from Linux:** latency, timbre, loudness balance, key rollover, whether a resting thumb keeps being reported, light effects, anything about how it feels. The user is the only sensor for those — ask, don't assert.
 
 ## Rules
 
@@ -31,10 +31,21 @@ Compilation, and `Typano --check-sound` / `--try-instrument <path>` (headless, r
 These are load-bearing and easy to regress:
 
 - Filter `event.isARepeat` on keyDown, or held notes machine-gun via macOS key repeat.
-- `⌘` is never a playing modifier — the monitor passes ⌘ events through so menu shortcuts work.
+- `⌘` **keyDown** goes to the menu; `⌘` **keyUp** must still reach `onKeyUp`, or the note is stranded and the key stays dead because `held` never loses the code.
+- **Right ⌘ latches, it never holds.** A held ⌘ routes every following keystroke to the menu — no notes, and `Q` quits the app. The toggle fires on release and only if nothing else was pressed during the hold, so right ⌘ stays usable as a menu modifier.
 - `.shift` cannot distinguish left from right Shift; read the device-dependent bits (`KC.DeviceFlag`).
+- **Modifier `flagsChanged` events are reported but not swallowed** — except Shift, which plays a note. The rollover tester can only measure what reaches `held`, and swallowing the rest desyncs the system's idea of which modifiers are down.
 - Caps Lock is a toggle with no key-up. It is bound as **F13** and requires `Scripts/capslock-remap.sh on`.
 - The local `NSEvent` monitor needs no Accessibility permission. Keep it that way — do not reach for `CGEventTap`.
+- **Anything that silences the instrument must clear `Instrument.held` too.** `Performer.allNotesOff()` cannot reach it; that is what `Instrument.panic()` is for.
+
+## Trackpad
+
+- `TrackpadSurface` is the window's `contentView` with the SwiftUI tree as a subview, because indirect touches go to the **first responder**, not to whatever is under the pointer.
+- **`wantsRestingTouches = true` is load-bearing.** Without it a motionless finger is filtered out as a resting touch — which is the entire gesture this surface exists for.
+- Zones are live only while the **instrument window is key**. In the preferences window the trackpad is an ordinary pointer, which is what makes the sliders draggable while the instrument keeps sounding.
+- Pointer-event swallowing is scoped to the instrument window. Widen it and the menu bar stops responding to clicks.
+- `NSTouch` needs no Accessibility permission either — same bargain as the key monitor. Do not reach for private `MultitouchSupport`.
 
 ## Sound
 

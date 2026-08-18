@@ -35,7 +35,7 @@ struct ContentView: View {
             stat("KEY", instrument.keyName, Palette.melody)
             stat("TRANSPOSE", instrument.transposeLabel, Palette.control)
             stat("OCTAVE", instrument.octaveLabel, Palette.control)
-            stat("SUSTAIN", instrument.pedalDown ? "down" : "up",
+            stat("SUSTAIN", sustainLabel,
                  instrument.pedalDown ? Palette.chord : .white.opacity(0.45))
 
             Spacer(minLength: 8)
@@ -43,6 +43,11 @@ struct ContentView: View {
             stat("LAYOUT", instrument.layout.name, Palette.chord)
             stat("SOUND", instrument.soundSource, .white.opacity(0.8))
         }
+    }
+
+    /// Three sources can hold the pedal, so "down" alone is ambiguous.
+    private var sustainLabel: String {
+        instrument.pedalDown ? "down · \(instrument.sustainSource)" : "up"
     }
 
     private func stat(_ label: String, _ value: String, _ color: Color) -> some View {
@@ -82,13 +87,24 @@ struct ContentView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack(spacing: 18) {
-            legend(Palette.melody, "melody — one octave per row")
-            legend(Palette.chord, instrument.layout.chordRule)
+        HStack(alignment: .center, spacing: 16) {
+            TrackpadMeterView(instrument: instrument, settings: instrument.settings, height: 42)
+                .frame(width: 68)
+
+            VStack(alignment: .leading, spacing: 5) {
+                legend(Palette.melody, "melody — one octave per row")
+                legend(Palette.chord, instrument.layout.chordRule)
+            }
+
             Spacer(minLength: 8)
-            Text("space sustain · ↑↓ hold ♯♭ · ←→ transpose · ⌘L layout · ⌘R rollover · ⌘1–4 timbre")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.35))
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text("sustain: trackpad rest · right ⌘ latch · space hold")
+                    .foregroundStyle(.white.opacity(0.45))
+                Text("↑↓ hold ♯♭ · ←→ transpose · ⌘L layout · ⌘R rollover · ⌘1–4 timbre · ⌘, preferences")
+                    .foregroundStyle(.white.opacity(0.35))
+            }
+            .font(.system(size: 10, design: .monospaced))
         }
     }
 

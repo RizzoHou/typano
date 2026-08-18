@@ -38,11 +38,12 @@ enum Layouts {
 
     private static var controlActions: [UInt16: KeyAction] {
         [
-            KC.space: .pedal,
-            KC.up:    .accidental(1),
-            KC.down:  .accidental(-1),
-            KC.left:  .transpose(-1),
-            KC.right: .transpose(1),
+            KC.space:        .pedal,
+            KC.rightCommand: .sustainLatch,
+            KC.up:           .accidental(1),
+            KC.down:         .accidental(-1),
+            KC.left:         .transpose(-1),
+            KC.right:        .transpose(1),
         ]
     }
 

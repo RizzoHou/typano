@@ -1,0 +1,113 @@
+import SwiftUI
+
+/// Lives in its own window alongside the instrument, never modal. Balance is
+/// something you find by ear while playing, so the sliders have to be reachable
+/// without the sound stopping — every change applies immediately and there is
+/// no apply button.
+struct PreferencesView: View {
+    @ObservedObject var instrument: Instrument
+    @ObservedObject var settings: Settings
+
+    var body: some View {
+        ZStack {
+            Palette.background.ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 20) {
+                section("Levels") {
+                    level("Melody", value: $settings.melodyLevel, tint: Palette.melody)
+                    level("Chords", value: $settings.chordLevel, tint: Palette.chord)
+
+                    HStack {
+                        Text("50% is the tuned baseline, not unity.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.35))
+                        Spacer()
+                        Button("Reset") { settings.resetLevels() }
+                            .font(.system(size: 11))
+                            .buttonStyle(.bordered)
+                            .tint(.white)
+                    }
+                }
+
+                section("Sustain") {
+                    toggle("Right ⌘ latch — tap on, tap off",
+                           isOn: $settings.sustainLatchEnabled)
+                    toggle("Trackpad — rest a thumb on the sustain half",
+                           isOn: $settings.trackpadSustainEnabled)
+                    toggle("Space — hold (conflicts with H / J on this matrix)",
+                           isOn: $settings.sustainSpaceEnabled)
+                }
+
+                section("Trackpad") {
+                    TrackpadMeterView(instrument: instrument, settings: settings)
+
+                    labelled("Divider", readout: String(format: "%.0f%%", settings.trackpadDivider * 100)) {
+                        Slider(value: $settings.trackpadDivider, in: 0.2...0.8)
+                            .tint(Palette.control)
+                    }
+                    toggle("Swap halves — sustain on the right",
+                           isOn: $settings.trackpadSwapped)
+
+                    Text("The other half is unassigned: somewhere to rest the second thumb without sustaining. Trackpad zones are live only while the instrument window is in front — here, the trackpad is just a pointer.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+
+    // MARK: - Pieces
+
+    private func section<Content: View>(
+        _ title: String, @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(title.uppercased())
+                .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.35))
+            content()
+        }
+    }
+
+    private func level(_ title: String, value: Binding<Double>, tint: Color) -> some View {
+        labelled(title, readout: gainLabel(value.wrappedValue)) {
+            Slider(value: value, in: 0...1).tint(tint)
+        }
+    }
+
+    private func labelled<Content: View>(
+        _ title: String, readout: String, @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.75))
+                .frame(width: 58, alignment: .leading)
+            content()
+            Text(readout)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.45))
+                .monospacedDigit()
+                .frame(width: 56, alignment: .trailing)
+        }
+    }
+
+    private func toggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.75))
+        }
+        .toggleStyle(.switch)
+        .tint(Palette.control)
+    }
+
+    private func gainLabel(_ level: Double) -> String {
+        let dB = AudioEngine.gainDelta(for: level)
+        if dB <= -89 { return "muted" }
+        return String(format: "%+.1f dB", dB)
+    }
+}

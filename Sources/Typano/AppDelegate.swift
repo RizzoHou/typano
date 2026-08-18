@@ -4,12 +4,13 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let instrument = Instrument()
     private var window: NSWindow!
+    private var preferences: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
 
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1180, height: 580),
+            contentRect: NSRect(x: 0, y: 0, width: 1180, height: 600),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -17,15 +18,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.title = "Typano"
         window.titlebarAppearsTransparent = true
         window.backgroundColor = NSColor(Palette.background)
-        window.contentView = NSHostingView(rootView: ContentView(instrument: instrument))
+        window.contentView = instrumentSurface()
         window.center()
         window.makeKeyAndOrderFront(nil)
 
+        observeFocus()
+
         NSApp.activate()
         instrument.start()
+        window.makeFirstResponder(window.contentView)
+        instrument.setInstrumentFocused(window.isKeyWindow)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    // MARK: - Content
+
+    /// The trackpad surface is the content view and the SwiftUI tree lives
+    /// inside it, because indirect touches are delivered to the first
+    /// responder — not to whatever sits under the pointer.
+    private func instrumentSurface() -> NSView {
+        let surface = TrackpadSurface(frame: .zero)
+        let hosting = NSHostingView(rootView: ContentView(instrument: instrument))
+        hosting.translatesAutoresizingMaskIntoConstraints = false
+        surface.addSubview(hosting)
+        NSLayoutConstraint.activate([
+            hosting.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
+            hosting.topAnchor.constraint(equalTo: surface.topAnchor),
+            hosting.bottomAnchor.constraint(equalTo: surface.bottomAnchor),
+        ])
+        instrument.attach(trackpad: surface)
+        return surface
+    }
+
+    // MARK: - Focus
+
+    private func observeFocus() {
+        let centre = NotificationCenter.default
+        centre.addObserver(forName: NSApplication.didResignActiveNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+            self?.instrument.setAppActive(false)
+        }
+        centre.addObserver(forName: NSWindow.didBecomeKeyNotification,
+                           object: window, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.window.makeFirstResponder(self.window.contentView)
+            self.instrument.setInstrumentFocused(true)
+        }
+        centre.addObserver(forName: NSWindow.didResignKeyNotification,
+                           object: window, queue: .main) { [weak self] _ in
+            self?.instrument.setInstrumentFocused(false)
+        }
+    }
 
     // MARK: - Menu
 
@@ -34,6 +79,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
+        appMenu.addItem(item("Preferences…", #selector(showPreferences), ","))
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Typano",
                         action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
@@ -70,9 +117,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func switchLayout() { instrument.switchLayout() }
 
-    @objc private func toggleRollover() { instrument.showRollover.toggle() }
+    @objc private func toggleRollover() { instrument.toggleRollover() }
 
     @objc private func selectTimbre(_ sender: NSMenuItem) { instrument.selectTimbre(sender.tag) }
 
     @objc private func resetTranspose() { instrument.resetTranspose() }
+
+    /// Non-modal and never closes the instrument: the point is to hear a
+    /// setting change while the note that revealed the problem is still
+    /// ringing.
+    @objc private func showPreferences() {
+        if preferences == nil {
+            let panel = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 440, height: 500),
+                styleMask: [.titled, .closable],
+                backing: .buffered,
+                defer: false
+            )
+            panel.title = "Typano Preferences"
+            panel.titlebarAppearsTransparent = true
+            panel.backgroundColor = NSColor(Palette.background)
+            panel.isReleasedWhenClosed = false
+            panel.contentView = NSHostingView(
+                rootView: PreferencesView(instrument: instrument, settings: instrument.settings))
+            panel.center()
+            preferences = panel
+        }
+        preferences?.makeKeyAndOrderFront(nil)
+    }
 }

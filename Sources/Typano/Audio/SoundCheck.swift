@@ -45,5 +45,24 @@ enum SoundCheck {
                 }
             }
         }
+
+        graph()
+    }
+
+    /// The throwaway engine above wires one sampler straight to the main mixer,
+    /// so it says nothing about the real graph. This starts the actual
+    /// `AudioEngine` — the only headless way to find out whether the limiter
+    /// instantiates and the chain connects on this machine.
+    private static func graph() {
+        let audio = AudioEngine()
+        audio.start()
+        print("graph:  \(audio.sourceLabel)")
+
+        for level in [0.0, 0.25, 0.5, 0.75, 1.0] {
+            audio.setMelodyLevel(level)
+            audio.setChordLevel(level)
+            print(String(format: "  level %.2f  melody %+.1f dB  chords %+.1f dB",
+                         level, audio.melody.overallGain, audio.chords.overallGain))
+        }
     }
 }

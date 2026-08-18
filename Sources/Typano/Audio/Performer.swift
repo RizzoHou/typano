@@ -12,9 +12,13 @@ final class Performer {
     /// Invalidates in-flight strum callbacks when the chord changes under them.
     private var chordGeneration = 0
 
-    private let melodyVelocity = 78
-    private let chordVelocity = 66
-    private let bassVelocity = 72
+    /// Velocity is also timbre: the Salamander bank has 16 velocity layers, so
+    /// pushing the melody up two layers makes it brighter as well as louder —
+    /// which is what "the left side sounds small" actually means. Gain alone
+    /// would make it loud and still dull.
+    private let melodyVelocity = 100
+    private let chordVelocity = 70
+    private let bassVelocity = 82
 
     init(audio: AudioEngine) { self.audio = audio }
 
@@ -100,7 +104,11 @@ final class Performer {
 
     /// There is no touch sensitivity to read, so a fixed velocity would make
     /// every note identical. A few units of jitter is enough to break that up.
+    ///
+    /// Clamped to MIDI's 1...127, not `UInt8`'s 0...255: above 127 the value
+    /// wraps into nonsense, and velocity 0 is a note-off as far as the sampler
+    /// is concerned.
     private func humanised(_ base: Int) -> UInt8 {
-        UInt8(clamping: base + Int.random(in: -6...6))
+        UInt8(max(1, min(127, base + Int.random(in: -6...6))))
     }
 }

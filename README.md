@@ -34,6 +34,8 @@ Three rules cover the whole grid: **右移一格 = 上五度 · 上排 = 加七 
 
 | key | function |
 |---|---|
+| trackpad | sustain while a thumb rests on the sustain half |
+| right `⌘` | sustain latch — tap on, tap off |
 | `space` | sustain pedal (hold) |
 | `↑` / `↓` | hold to raise / lower the next note or chord root a semitone |
 | `←` / `→` | transpose the whole instrument down / up a semitone |
@@ -41,6 +43,25 @@ Three rules cover the whole grid: **右移一格 = 上五度 · 上排 = 加七 
 | `⌘R` | rollover tester |
 | `⌘1`–`⌘4` | timbre |
 | `⌘0` | reset transpose |
+| `⌘,` | preferences |
+
+### Sustain
+
+Three sources, ORed together, each switchable off in preferences.
+
+The space bar is the obvious pedal and the worst one: it ghosts against the melody keys, so `space` + `H` + `J` does not register and holding sustain while playing `G` and `H` together is impossible. That is the keyboard matrix, not software — the only fix is a different key.
+
+**The trackpad is the primary pedal.** One vertical divider splits it in two; resting a thumb on the sustain half holds the pedal, lifting it releases. It sits where the thumbs already are, and resting is less tiring than holding a key down for a whole phrase. The other half is deliberately inert — somewhere to park the second thumb. The divider position and which side sustains are both adjustable. Trackpad zones are live only while the instrument window is in front; in the preferences window the trackpad is an ordinary pointer, which is what makes its sliders draggable while the instrument keeps sounding.
+
+**Right `⌘` latches** rather than holds, and it has to: a held `⌘` routes every following keystroke to the menu bar instead of the instrument, so `Q` would quit the app mid-phrase. The toggle fires on release and only if nothing else was pressed in between, so right `⌘` still works as a normal menu modifier.
+
+### Preferences (`⌘,`)
+
+A second window that stays open beside the instrument, because balance is something you find by ear while playing. Everything applies immediately and persists.
+
+- **Melody / chord levels.** Two sliders. 50% is the tuned baseline, not unity; the curve is asymmetric (+6 dB at the top, −40 dB and then silence at the bottom) because the baseline already sits near the headroom ceiling.
+- **Sustain sources.** Turn any of the three off.
+- **Trackpad.** Divider position, which half sustains, and a live view of every contact on the pad.
 
 ## Build and run
 
@@ -57,7 +78,7 @@ Scripts/run.sh                   # build, bundle, launch
 Diagnostics:
 
 ```bash
-.build/arm64-apple-macosx/release/Typano --check-sound              # which sound sources load
+.build/arm64-apple-macosx/release/Typano --check-sound              # sound sources, and the real graph
 .build/arm64-apple-macosx/release/Typano --try-instrument <path>    # probe one instrument file
 ```
 
@@ -68,6 +89,8 @@ Caps Lock cannot be a note key as shipped: it is a toggle that emits no key-up e
 ## Sound
 
 The primary voice is the **Salamander Grand Piano** (Yamaha C5, 16 velocity layers, release samples) by Alexander Holm, CC-BY 3.0, distributed as SF2 by [FreePats](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html). It is downloaded, not committed; attribution is required if Typano is ever distributed with it. If it is missing, the app falls back to the system General MIDI bank and stays playable.
+
+Chords fire four notes at once and sum roughly 12 dB above a single melody note at the same velocity, so the melody zone reads as quiet even when it is nominally the same level. The melody is compensated with both velocity and gain: velocity is also timbre on a 16-layer sampled piano, so gain alone would make the left hand loud and still dull. A peak limiter sits at the end of the chain as insurance against the levels the sliders allow.
 
 Because the keyboard reports no velocity, fidelity comes from arrangement rather than sampling:
 
@@ -84,10 +107,13 @@ Worth recording, because it looks like it should. Logic's `Concert Grand Piano.e
 
 ```
 Sources/Typano/
-  Input/    KeyCodes, KeyboardMonitor   — NSEvent local monitor, no Accessibility permission
-  Model/    Layouts, Chord, VoiceLeading, Instrument
+  Input/    KeyCodes, KeyboardMonitor, TrackpadSurface   — local NSEvent monitor and
+                                                          NSTouch, neither needing
+                                                          Accessibility permission
+  Model/    Layouts, Chord, VoiceLeading, Instrument, Settings
   Audio/    AudioEngine, SoundSource, Performer, SoundCheck
-  UI/       ContentView, KeyCapView, PhysicalKeyboard, RolloverTesterView
+  UI/       ContentView, KeyCapView, PhysicalKeyboard, RolloverTesterView,
+            TrackpadMeterView, PreferencesView
 ```
 
 Development happens on a Linux box and syncs to a Mac with `Scripts/sync.sh`; the Mac is the only place the app can actually be built, heard, or played.

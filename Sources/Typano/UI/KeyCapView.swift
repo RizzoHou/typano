@@ -31,7 +31,7 @@ struct KeyCapView: View {
 
     private var isActive: Bool {
         guard let code = key.code else { return false }
-        return instrument.held.contains(code)
+        return instrument.isLit(code)
     }
 
     private var caption: Instrument.Caption? {

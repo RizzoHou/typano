@@ -77,10 +77,33 @@ enum KC {
     static let down: UInt16 = 125
     static let up: UInt16 = 126
 
-    /// Device-dependent modifier bits, needed because `.shift` alone cannot
-    /// tell left from right.
+    /// Device-dependent modifier bits (IOKit `NX_DEVICE*KEYMASK`), needed
+    /// because the cooked flags — `.shift`, `.command`, … — cannot tell left
+    /// from right. `fn` has no device bit; it is detected by key code plus
+    /// `.function` in the cooked flags.
     enum DeviceFlag {
+        static let leftControl: UInt = 0x0001
         static let leftShift: UInt = 0x0002
         static let rightShift: UInt = 0x0004
+        static let leftCommand: UInt = 0x0008
+        static let rightCommand: UInt = 0x0010
+        static let leftOption: UInt = 0x0020
+        static let rightOption: UInt = 0x0040
+        static let rightControl: UInt = 0x2000
+
+        /// The bit that says "this modifier key is physically down", for each
+        /// modifier key code the monitor reports.
+        static func mask(for keyCode: UInt16) -> UInt? {
+            switch keyCode {
+            case KC.control:      return leftControl
+            case KC.shift:        return leftShift
+            case KC.rightShift:   return rightShift
+            case KC.command:      return leftCommand
+            case KC.rightCommand: return rightCommand
+            case KC.option:       return leftOption
+            case KC.rightOption:  return rightOption
+            default:              return nil
+            }
+        }
     }
 }
