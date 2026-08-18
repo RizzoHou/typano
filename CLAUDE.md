@@ -9,9 +9,12 @@ Edit locally, sync, build over ssh. Never edit files on the Mac — local is the
 ```bash
 bash Scripts/sync.sh                                    # rsync -> entry-mac:~/projects/typano
 ssh entry-mac 'cd ~/projects/typano && bash Scripts/build.sh release'
+ssh entry-mac 'cd ~/projects/typano && .build/arm64-apple-macosx/release/Typano --check-sound'
 ```
 
 Sync before **every** remote command batch; the usual failure is debugging a stale remote tree.
+
+`Scripts/run.sh` (build + bundle + launch) has to be run **by the user, at the Mac** — `open` from an ssh session puts the window on a session nobody is looking at, and the whole point of launching is that a human plays it.
 
 ## What can and cannot be verified here
 
@@ -25,6 +28,7 @@ Compilation, and `Typano --check-sound` / `--try-instrument <path>` (headless, r
 - **`Sounds/` must stay in `.rsync-exclude`.** It holds a 1.2 GB sound bank that exists only on the Mac. `sync.sh` uses `--delete`; dropping the exclusion destroys it.
 - **Key layouts are compiled-in Swift values** (`Model/Layouts.swift`), not resource files — SwiftPM resource bundles complicate the hand-rolled `.app`.
 - **`notes.md`, `cof.md`, `cot.md` are user-edit-only.** Read them; never write them. They are gitignored.
+- **Settings persist in `UserDefaults` under `com.rizzohou.typano`** and survive rebuilds. Changing a default in `Settings.swift` does nothing on a machine that has already run the app — that is the "my change had no effect" trap. Clear with `ssh entry-mac 'defaults delete com.rizzohou.typano'`.
 
 ## Input gotchas
 
@@ -50,3 +54,6 @@ These are load-bearing and easy to regress:
 ## Sound
 
 Primary voice is the Salamander SF2 (`Scripts/fetch-sounds.sh`), falling back to the system GM bank. Logic Pro's sampled pianos are **not** usable — see `DEVCHANGELOG.md` 2026-08-16 before trying again.
+
+- **`loadSoundBankInstrument` resets `overallGain`**, so `AudioEngine.load(timbre:)` re-applies the levels after every load. Reorder or drop that call and a ⌘1–⌘4 timbre switch silently throws away the user's balance.
+- **Level 0.5 is the tuned baseline, not unity.** Melody sits above chords by design: a chord fires four notes at once and sums roughly 12 dB louder than a single note at the same velocity.
