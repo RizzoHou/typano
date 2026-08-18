@@ -28,6 +28,7 @@ Compilation, and `Typano --check-sound` / `--try-instrument <path>` (headless, r
 - **`Sounds/` must stay in `.rsync-exclude`.** It holds a 1.2 GB sound bank that exists only on the Mac. `sync.sh` uses `--delete`; dropping the exclusion destroys it.
 - **Key layouts are compiled-in Swift values** (`Model/Layouts.swift`), not resource files — SwiftPM resource bundles complicate the hand-rolled `.app`.
 - **`notes.md`, `cof.md`, `cot.md` are user-edit-only.** Read them; never write them. They are gitignored.
+- **Windows are sized from their content, not from a rect.** Preferences is an `NSHostingController` sized to `fittingSize`; a hard-coded `contentRect` strands SwiftUI content in the top half, because the view stretches and its children do not.
 - **Settings persist in `UserDefaults` under `com.rizzohou.typano`** and survive rebuilds. Changing a default in `Settings.swift` does nothing on a machine that has already run the app — that is the "my change had no effect" trap. Clear with `ssh entry-mac 'defaults delete com.rizzohou.typano'`.
 
 ## Input gotchas
@@ -35,9 +36,9 @@ Compilation, and `Typano --check-sound` / `--try-instrument <path>` (headless, r
 These are load-bearing and easy to regress:
 
 - Filter `event.isARepeat` on keyDown, or held notes machine-gun via macOS key repeat.
-- `⌘` **keyDown** goes to the menu; `⌘` **keyUp** must still reach `onKeyUp`, or the note is stranded and the key stays dead because `held` never loses the code.
-- **Right ⌘ latches, it never holds.** A held ⌘ routes every following keystroke to the menu — no notes, and `Q` quits the app. The toggle fires on release and only if nothing else was pressed during the hold.
-- **Right ⌘ is isolated from the menu** while it is the only ⌘ down (`KeyboardMonitor.rightCommandIsolated`), so holding it plays notes instead of firing ⌘H / ⌘Q. Consequence to keep in mind: **shortcuts no longer answer to right ⌘** — ⌘L, ⌘R, ⌘1–4 are left-⌘ only. `leftCommandDown` must stay tracked from `flagsChanged`, or the isolation swallows real shortcuts.
+- **Left `⌘` keyDown goes to the menu; right `⌘` does not** (`KeyboardMonitor.rightCommandIsolated`) — while right ⌘ is the only ⌘ down the keystroke stays with the instrument, so holding it plays notes instead of firing ⌘H / ⌘Q. Two consequences: **no shortcut answers to right ⌘** (⌘L, ⌘R, ⌘1–4 are left-⌘ only), and `leftCommandDown` must stay tracked from `flagsChanged` or the isolation starts swallowing real shortcuts.
+- **`⌘` keyUp must still reach `onKeyUp`** whichever ⌘ it is, or the note is stranded and the key stays dead because `held` never loses the code.
+- **Right ⌘ latches, it never holds** — the toggle fires on release and only if nothing else was pressed during the hold. Isolation makes a held right ⌘ survivable; latching is still what the design wants, because resting beats holding for a whole phrase.
 - **A local monitor cannot reach ⌘-Tab / ⌘-Space** — WindowServer handles those before any app. Only the HID remap (`Scripts/remap.sh on rightcmd`, right ⌘ → F16) removes them. F16 is bound to the same `.sustainLatch`, and unlike right ⌘ it is an ordinary key, so `Instrument` toggles the latch on its keyDown rather than from the monitor's tap detection.
 - `.shift` cannot distinguish left from right Shift; read the device-dependent bits (`KC.DeviceFlag`).
 - **Modifier `flagsChanged` events are reported but not swallowed** — except Shift, which plays a note. The rollover tester can only measure what reaches `held`, and swallowing the rest desyncs the system's idea of which modifiers are down.
