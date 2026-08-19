@@ -3,8 +3,13 @@ import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let instrument = Instrument()
+    private lazy var recording = RecordingController(instrument: instrument,
+                                                     settings: instrument.settings)
     private var window: NSWindow!
     private var preferences: NSWindow?
+    private var recordAudioItem: NSMenuItem!
+    private var recordVideoItem: NSMenuItem!
+    private var revealItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -32,6 +37,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         instrument.start()
         window.makeFirstResponder(window.contentView)
         instrument.setInstrumentFocused(window.isKeyWindow)
+        recording.attach(window: window)
+    }
+
+    /// An unfinalised MPEG-4 has no `moov` atom and will not open at all, so a
+    /// take in progress has to be closed before the process goes away.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard recording.mode.isRecording else { return .terminateNow }
+        recording.finishBeforeTermination {
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -43,7 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// responder — not to whatever sits under the pointer.
     private func instrumentSurface() -> NSView {
         let surface = TrackpadSurface(frame: .zero)
-        let hosting = NSHostingView(rootView: ContentView(instrument: instrument))
+        let hosting = NSHostingView(
+            rootView: ContentView(instrument: instrument, recording: recording))
         hosting.translatesAutoresizingMaskIntoConstraints = false
         surface.addSubview(hosting)
         NSLayoutConstraint.activate([
@@ -115,6 +132,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         instrumentItem.submenu = instrumentMenu
         mainMenu.addItem(instrumentItem)
 
+        // Shortcuts avoid ⇧ entirely: Shift is a melody key (B2), so ⇧⌘V would
+        // sound a note at the moment recording starts. They also avoid ⌘A ⌘C
+        // ⌘V ⌘X ⌘Z ⌘S, which the main menu would otherwise steal from the save
+        // panel's own text field. ⌥ is in no layout, so it makes no sound.
+        let recordItem = NSMenuItem()
+        let recordMenu = NSMenu(title: "Record")
+        recordAudioItem = item("Record Audio", #selector(toggleAudioRecording), "e")
+        recordVideoItem = item("Record Video", #selector(toggleVideoRecording), "e")
+        recordVideoItem.keyEquivalentModifierMask = [.command, .option]
+        recordMenu.addItem(recordAudioItem)
+        recordMenu.addItem(recordVideoItem)
+        recordMenu.addItem(.separator())
+        revealItem = item("Reveal Last Recording in Finder", #selector(revealRecording), "")
+        recordMenu.addItem(revealItem)
+        recordItem.submenu = recordMenu
+        mainMenu.addItem(recordItem)
+
         NSApp.mainMenu = mainMenu
     }
 
@@ -133,6 +167,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func selectTimbre(_ sender: NSMenuItem) { instrument.selectTimbre(sender.tag) }
 
     @objc private func resetTranspose() { instrument.resetTranspose() }
+
+    @objc private func toggleAudioRecording() { recording.toggleAudio() }
+
+    @objc private func toggleVideoRecording() { recording.toggleVideo() }
+
+    @objc private func revealRecording() { recording.revealLastRecording() }
+
+    /// Called for key-equivalent dispatch as well as for display, so this is
+    /// also what stops ⌘E re-entering while its own save panel is open.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem {
+        case recordAudioItem:
+            menuItem.title = recording.mode == .idle || !isAudioRecording
+                ? "Record Audio" : "Stop Recording Audio"
+            if case .audio = recording.mode { menuItem.title = "Stop Recording Audio" }
+            return recording.mode != .choosingLocation && !recording.isRecordingVideo
+        case recordVideoItem:
+            if case .video = recording.mode {
+                menuItem.title = "Stop Recording Video"
+            } else {
+                menuItem.title = "Record Video"
+            }
+            return recording.mode != .choosingLocation && !isAudioRecording
+        case revealItem:
+            return recording.lastRecording != nil
+        default:
+            return true
+        }
+    }
+
+    private var isAudioRecording: Bool {
+        if case .audio = recording.mode { return true }
+        return false
+    }
 
     /// Non-modal and never closes the instrument: the point is to hear a
     /// setting change while the note that revealed the problem is still

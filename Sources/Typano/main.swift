@@ -5,6 +5,11 @@ if CommandLine.arguments.contains("--check-sound") {
     exit(0)
 }
 
+if let flag = CommandLine.arguments.firstIndex(of: "--check-recording"),
+   CommandLine.arguments.indices.contains(flag + 1) {
+    exit(SoundCheck.recording(path: CommandLine.arguments[flag + 1]) ? 0 : 1)
+}
+
 if CommandLine.arguments.contains("--check-remap") {
     let ok = CommandLine.arguments.contains("--write")
         ? SoundCheck.remap() && SoundCheck.remapWrite()

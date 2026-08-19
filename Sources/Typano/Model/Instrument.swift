@@ -60,6 +60,9 @@ final class Instrument: ObservableObject {
     let settings: Settings
 
     private let audio = AudioEngine()
+    /// Exposed only so `RecordingController` can install its tap. The engine
+    /// itself stays private; `AudioEngine` publishes just the tap seam.
+    var audioEngine: AudioEngine { audio }
     private lazy var performer = Performer(audio: audio)
     private let monitor = KeyboardMonitor()
     private weak var trackpad: TrackpadSurface?
@@ -116,6 +119,13 @@ final class Instrument: ObservableObject {
         if settings.applyRemapsOnLaunch, !settings.remapsOnLaunch.isEmpty {
             setRemaps(settings.remapsOnLaunch)
         }
+    }
+
+    /// Hands the keyboard to a panel that accepts typing. Deliberately not
+    /// `panic()`: a chord ringing when the save panel opens should keep
+    /// ringing, exactly as it does when Preferences takes focus.
+    func setNoteInputSuspended(_ suspended: Bool) {
+        monitor.setNoteInputSuspended(suspended)
     }
 
     // MARK: - Key remaps

@@ -22,6 +22,30 @@ final class Settings: ObservableObject {
     /// job is to be somewhere the other thumb can rest without sustaining.
     @Published var trackpadSwapped: Bool   { didSet { store(trackpadSwapped, .trackpadSwapped) } }
 
+    /// Recording. The container is stored as a raw string so an unknown value
+    /// degrades to the default rather than trapping.
+    @Published var recordingFormat: String { didSet { store(recordingFormat, .recordingFormat) } }
+    @Published var recordingVideoFPS: Int  { didSet { store(recordingVideoFPS, .recordingVideoFPS) } }
+    @Published var recordingShowsCursor: Bool { didSet { store(recordingShowsCursor, .recordingShowsCursor) } }
+    /// The recording badge lives inside the captured window, so it lands in the
+    /// video. Off by default: a demo of an instrument should show the
+    /// instrument, not a readout about itself.
+    @Published var recordingBadgeInVideo: Bool { didSet { store(recordingBadgeInVideo, .recordingBadgeInVideo) } }
+    @Published var recordingFolder: String { didSet { store(recordingFolder, .recordingFolder) } }
+
+    var recordingContainer: AudioRecorder.Container {
+        AudioRecorder.Container(rawValue: recordingFormat) ?? .aac
+    }
+
+    var recordingFolderURL: URL {
+        if !recordingFolder.isEmpty {
+            let url = URL(fileURLWithPath: recordingFolder)
+            if FileManager.default.fileExists(atPath: url.path) { return url }
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Music/Typano")
+    }
+
     /// Re-apply the key remaps at launch. Off by default: starting the app
     /// should not silently change system-wide keyboard behaviour. On, it saves
     /// a trip to Preferences after every reboot, since the remaps are per-boot.
@@ -54,6 +78,11 @@ final class Settings: ObservableObject {
         trackpadDivider = defaults.double(forKey: Key.trackpadDivider.rawValue)
         trackpadSwapped = defaults.bool(forKey: Key.trackpadSwapped.rawValue)
         applyRemapsOnLaunch = defaults.bool(forKey: Key.applyRemapsOnLaunch.rawValue)
+        recordingFormat = defaults.string(forKey: Key.recordingFormat.rawValue) ?? "aac"
+        recordingVideoFPS = defaults.integer(forKey: Key.recordingVideoFPS.rawValue)
+        recordingShowsCursor = defaults.bool(forKey: Key.recordingShowsCursor.rawValue)
+        recordingBadgeInVideo = defaults.bool(forKey: Key.recordingBadgeInVideo.rawValue)
+        recordingFolder = defaults.string(forKey: Key.recordingFolder.rawValue) ?? ""
     }
 
     func resetLevels() {
@@ -75,6 +104,11 @@ final class Settings: ObservableObject {
         case trackpadSwapped = "trackpadSwapped"
         case applyRemapsOnLaunch = "applyRemapsOnLaunch"
         case remapsOnLaunch = "remapsOnLaunch"
+        case recordingFormat = "recordingFormat"
+        case recordingVideoFPS = "recordingVideoFPS"
+        case recordingShowsCursor = "recordingShowsCursor"
+        case recordingBadgeInVideo = "recordingBadgeInVideo"
+        case recordingFolder = "recordingFolder"
 
         static let registrationDefaults: [String: Any] = [
             Key.melodyLevel.rawValue: 0.5,
@@ -85,6 +119,11 @@ final class Settings: ObservableObject {
             Key.trackpadDivider.rawValue: 0.5,
             Key.trackpadSwapped.rawValue: false,
             Key.applyRemapsOnLaunch.rawValue: false,
+            Key.recordingFormat.rawValue: "aac",
+            Key.recordingVideoFPS.rawValue: 60,
+            Key.recordingShowsCursor.rawValue: false,
+            Key.recordingBadgeInVideo.rawValue: false,
+            Key.recordingFolder.rawValue: "",
         ]
     }
 }

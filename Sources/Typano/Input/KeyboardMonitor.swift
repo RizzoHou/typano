@@ -19,6 +19,27 @@ final class KeyboardMonitor {
     /// instrument is the thing being played, none of that should reach the UI.
     var shouldSwallowPointer: (NSEvent) -> Bool = { _ in false }
 
+    /// While a panel that accepts typing is up — the save panel is the only one
+    /// today — the keyboard belongs to that panel.
+    ///
+    /// Without this, every non-⌘ keyDown is swallowed and turned into a note,
+    /// so typing a filename plays a scale and the text field receives nothing.
+    /// Shift is the worst of it: it is a melody key (B2), so it is swallowed
+    /// too and there are no capital letters.
+    ///
+    /// Key-*ups* keep being delivered, so a key released behind the panel still
+    /// ends its note and leaves `held`. Notes already ringing when the panel
+    /// opened keep ringing, which is why this is not simply `panic()`.
+    var suspendsNoteInput: Bool { suspensionDepth > 0 }
+
+    /// A depth counter rather than a flag, so overlapping presentations cannot
+    /// unbalance each other.
+    private var suspensionDepth = 0
+
+    func setNoteInputSuspended(_ suspended: Bool) {
+        suspensionDepth = max(0, suspensionDepth + (suspended ? 1 : -1))
+    }
+
     private var monitor: Any?
 
     /// Right ⌘ is a latch, so the toggle fires on release — and only if the key
@@ -76,6 +97,7 @@ final class KeyboardMonitor {
             // ⌘-combination rather than a latch tap.
             if rightCommandDown { rightCommandClean = false }
 
+            if suspendsNoteInput { return event }
             if belongsToMenu(event) { return event }
 
             onKeyDown?(event.keyCode)
@@ -86,7 +108,7 @@ final class KeyboardMonitor {
             // strand the note and leave the key permanently dead, because
             // `held` never lost the code.
             onKeyUp?(event.keyCode)
-            return belongsToMenu(event) ? event : nil
+            return (suspendsNoteInput || belongsToMenu(event)) ? event : nil
 
         case .flagsChanged:
             return handleFlags(event)
@@ -104,6 +126,7 @@ final class KeyboardMonitor {
         let code = event.keyCode
 
         if code == KC.capsLock {
+            if suspendsNoteInput { return event }
             // Unremapped Caps Lock: a toggle with no key-up, so note duration
             // is undefined and it cannot serve as a note key.
             onRawCapsLock?()
@@ -128,7 +151,15 @@ final class KeyboardMonitor {
         default:              break
         }
 
-        if down { onKeyDown?(code) } else { onKeyUp?(code) }
+        if down {
+            if !suspendsNoteInput { onKeyDown?(code) }
+        } else {
+            onKeyUp?(code)
+        }
+
+        // Shift must reach a panel that is accepting text, or there are no
+        // capital letters in a filename.
+        if suspendsNoteInput { return event }
 
         // Shift plays a note, so its event stops here. Everything else is
         // passed through — the system's own view of which modifiers are down

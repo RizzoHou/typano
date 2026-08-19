@@ -192,4 +192,107 @@ enum SoundCheck {
         print(failures == 0 ? "remap write: PASS" : "remap write: FAIL (\(failures))")
         return failures == 0
     }
+
+    /// `Typano --check-recording <path>` — proves the whole audio recording
+    /// path without ears.
+    ///
+    /// Starts the real `AudioEngine`, installs the tap, plays an arpeggio so
+    /// the file contains actual signal, stops, and reopens the result. A
+    /// non-zero peak plus a successful readback covers format negotiation, the
+    /// encoder, the write queue and finalisation — all from a Linux shell.
+    static func recording(path: String) -> Bool {
+        let url = URL(fileURLWithPath: path)
+        let audio = AudioEngine()
+        audio.start()
+
+        var failures = 0
+        func expect(_ condition: Bool, _ message: String) {
+            print("  \(condition ? "OK   " : "FAIL ") \(message)")
+            if !condition { failures += 1 }
+        }
+
+        expect(audio.isRunning, "engine running")
+        print("  ....  tap format: \(audio.recordingFormat)")
+
+        let container: AudioRecorder.Container =
+            url.pathExtension.lowercased() == "wav" ? .wav : .aac
+        let recorder = AudioRecorder(audio: audio)
+        do {
+            try recorder.start(url: url, container: container)
+        } catch {
+            print("  FAIL  start: \(error.localizedDescription)")
+            return false
+        }
+        print("  ....  writing \(container.rawValue) -> \(path)")
+
+        // A C major arpeggio, so the file has signal rather than silence.
+        var peak: Float = 0
+        for note in [60, 64, 67, 72] as [UInt8] {
+            audio.melody.startNote(note, withVelocity: 100, onChannel: 0)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+            peak = max(peak, recorder.peak)
+            audio.melody.stopNote(note, onChannel: 0)
+        }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        peak = max(peak, recorder.peak)
+
+        // The coupling between the route-change fix and this feature: a rebuild
+        // tears the graph down, which drops installed taps. Without
+        // restoreRecordingTap the recording would silently stop receiving audio
+        // here and the rest of the take would be silence, with no error.
+        let beforeRebuild = recorder.duration
+        audio.simulateConfigurationChange()
+        RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+
+        var peakAfter: Float = 0
+        for note in [67, 72] as [UInt8] {
+            audio.melody.startNote(note, withVelocity: 100, onChannel: 0)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+            peakAfter = max(peakAfter, recorder.peak)
+            audio.melody.stopNote(note, onChannel: 0)
+        }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        peakAfter = max(peakAfter, recorder.peak)
+
+        expect(recorder.duration > beforeRebuild + 0.5,
+               String(format: "tap survived a graph rebuild (%.2f s -> %.2f s)",
+                      beforeRebuild, recorder.duration))
+        expect(peakAfter > 0.001,
+               String(format: "still capturing signal after the rebuild, peak %.4f", peakAfter))
+        peak = max(peak, peakAfter)
+
+        let framesSeen = recorder.duration
+        var finished = false
+        var result: Result<URL, Error>?
+        recorder.stop { outcome in result = outcome; finished = true }
+        let deadline = Date().addingTimeInterval(5)
+        while !finished, Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+
+        expect(finished, "recorder finished")
+        if case .failure(let error) = result {
+            expect(false, "write failed: \(error.localizedDescription)")
+        }
+        expect(framesSeen > 2.5, String(format: "tap ran for %.2f s", framesSeen))
+        // Silence would still produce a valid file, so this is the assertion
+        // that separates "it wrote something" from "it recorded the instrument".
+        expect(peak > 0.001, String(format: "captured signal, peak %.4f", peak))
+
+        let size = (try? FileManager.default
+            .attributesOfItem(atPath: path)[.size] as? Int) ?? 0
+        expect((size ?? 0) > 1024, "file is \(size ?? 0) bytes")
+
+        if let readback = try? AVAudioFile(forReading: url) {
+            let seconds = Double(readback.length) / readback.processingFormat.sampleRate
+            expect(readback.length > 0,
+                   String(format: "readback %d frames, %.2f s", readback.length, seconds))
+        } else {
+            expect(false, "could not reopen the file — container not finalised?")
+        }
+
+        print("  ....  screen recording permission: \(ScreenPermission.isGranted)")
+        print(failures == 0 ? "recording: PASS" : "recording: FAIL (\(failures))")
+        return failures == 0
+    }
 }

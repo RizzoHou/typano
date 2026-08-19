@@ -2,6 +2,12 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var instrument: Instrument
+    /// Its own observed object rather than reached through `instrument`: a
+    /// nested ObservableObject does not propagate its changes through an outer
+    /// one, so the badge would never tick.
+    @ObservedObject var recording: RecordingController
+
+    @State private var pulse = false
 
     var body: some View {
         ZStack {
@@ -9,6 +15,7 @@ struct ContentView: View {
 
             VStack(spacing: 16) {
                 header
+                if let error = recording.lastError { recordingError(error) }
                 if !instrument.capsLockRemapped { capsLockHint }
                 keyboard
                 footer
@@ -42,7 +49,30 @@ struct ContentView: View {
 
             stat("LAYOUT", instrument.layout.name, Palette.chord)
             stat("SOUND", instrument.soundSource, .white.opacity(0.8))
+
+            if showBadge { badge }
         }
+    }
+
+    /// Hidden during a video take unless asked for, because the badge is inside
+    /// the captured window and would otherwise be burnt into every recording.
+    private var showBadge: Bool {
+        guard recording.mode.isRecording else { return false }
+        return !recording.isRecordingVideo || instrument.settings.recordingBadgeInVideo
+    }
+
+    private var badge: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(Color.red)
+                .frame(width: 7, height: 7)
+                .opacity(pulse ? 0.25 : 1)
+                .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true),
+                           value: pulse)
+            stat(recording.isRecordingVideo ? "REC VIDEO" : "REC", recording.elapsedLabel, .red)
+        }
+        .onAppear { pulse = true }
+        .onDisappear { pulse = false }
     }
 
     /// Three sources can hold the pedal, so "down" alone is ambiguous.
@@ -101,7 +131,7 @@ struct ContentView: View {
             VStack(alignment: .trailing, spacing: 3) {
                 Text("sustain: trackpad rest · right ⌘ latch · space hold")
                     .foregroundStyle(.white.opacity(0.45))
-                Text("↑↓ hold ♯♭ · ←→ transpose · ⌘L layout · ⌘R rollover · ⌘1–4 timbre · ⌘, preferences")
+                Text("↑↓ hold ♯♭ · ←→ transpose · ⌘L layout · ⌘R rollover · ⌘1–4 timbre · ⌘E record · ⌥⌘E video · ⌘, preferences")
                     .foregroundStyle(.white.opacity(0.35))
             }
             .font(.system(size: 10, design: .monospaced))
@@ -116,6 +146,22 @@ struct ContentView: View {
                 .foregroundStyle(.white.opacity(0.5))
                 .lineLimit(1)
         }
+    }
+
+    private func recordingError(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Text("⚠")
+            Text(message)
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(Palette.chord)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Palette.chord.opacity(0.10))
+        )
     }
 
     private var capsLockHint: some View {

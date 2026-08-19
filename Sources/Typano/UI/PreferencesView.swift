@@ -81,6 +81,39 @@ struct PreferencesView: View {
                     .foregroundStyle(.white.opacity(0.35))
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            section("Recording") {
+                Picker("", selection: $settings.recordingFormat) {
+                    ForEach(AudioRecorder.Container.allCases, id: \.rawValue) { container in
+                        Text(container.label).tag(container.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                Picker("", selection: $settings.recordingVideoFPS) {
+                    Text("30 fps").tag(30)
+                    Text("60 fps").tag(60)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                toggle("Include the pointer in video", isOn: $settings.recordingShowsCursor)
+                toggle("Show the REC badge in video takes",
+                       isOn: $settings.recordingBadgeInVideo)
+
+                Text(recordingNote)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.35))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !ScreenPermission.isGranted {
+                    Button("Open Screen Recording settings") { ScreenPermission.openSettings() }
+                        .font(.system(size: 11))
+                        .buttonStyle(.bordered)
+                        .tint(.white)
+                }
+            }
         }
         .padding(22)
         .frame(width: Self.width, alignment: .leading)
@@ -103,6 +136,13 @@ struct PreferencesView: View {
             return "The mapping is set, but this keyboard is still sending raw Caps Lock — hidutil only covers devices attached when it ran. Toggle Caps Lock off and on to cover it."
         }
         return "Applied with hidutil: no password, no restart, and cleared by a reboot. Scripts/remap.sh does the same thing from a shell if the app will not start."
+    }
+
+    private var recordingNote: String {
+        let base = "Audio records the instrument's own output, straight off the graph — no other app, no microphone, and unaffected by which output device is selected."
+        return ScreenPermission.isGranted
+            ? base + " Video captures this window."
+            : base + " Video additionally needs Screen Recording permission."
     }
 
     /// Reads live from hidutil rather than from a stored preference, so a remap
