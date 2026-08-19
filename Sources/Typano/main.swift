@@ -5,6 +5,13 @@ if CommandLine.arguments.contains("--check-sound") {
     exit(0)
 }
 
+if CommandLine.arguments.contains("--check-remap") {
+    let ok = CommandLine.arguments.contains("--write")
+        ? SoundCheck.remap() && SoundCheck.remapWrite()
+        : SoundCheck.remap()
+    exit(ok ? 0 : 1)
+}
+
 if CommandLine.arguments.contains("--check-restart") {
     exit(SoundCheck.restart() ? 0 : 1)
 }

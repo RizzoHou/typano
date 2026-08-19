@@ -67,6 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         centre.addObserver(forName: NSApplication.didBecomeActiveNotification,
                            object: nil, queue: .main) { [weak self] _ in
             self?.instrument.setAppActive(true)
+            // The remap table can change while the app is in the background —
+            // a reboot clears it, and Scripts/remap.sh can set it.
+            self?.instrument.refreshRemapState()
         }
         centre.addObserver(forName: NSWindow.didBecomeKeyNotification,
                            object: window, queue: .main) { [weak self] _ in
@@ -153,6 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.center()
             preferences = panel
         }
+        instrument.refreshRemapState()
         preferences?.makeKeyAndOrderFront(nil)
     }
 }

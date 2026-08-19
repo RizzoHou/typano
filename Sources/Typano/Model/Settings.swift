@@ -22,6 +22,24 @@ final class Settings: ObservableObject {
     /// job is to be somewhere the other thumb can rest without sustaining.
     @Published var trackpadSwapped: Bool   { didSet { store(trackpadSwapped, .trackpadSwapped) } }
 
+    /// Re-apply the key remaps at launch. Off by default: starting the app
+    /// should not silently change system-wide keyboard behaviour. On, it saves
+    /// a trip to Preferences after every reboot, since the remaps are per-boot.
+    @Published var applyRemapsOnLaunch: Bool { didSet { store(applyRemapsOnLaunch, .applyRemapsOnLaunch) } }
+
+    /// Which remaps to re-apply, remembered from the last time they were
+    /// changed in-app. Stored as raw strings so the set survives a schema
+    /// change in `KeyRemap.Feature` without crashing on an unknown case.
+    var remapsOnLaunch: Set<KeyRemap.Feature> {
+        get {
+            let raw = defaults.stringArray(forKey: Key.remapsOnLaunch.rawValue) ?? []
+            return Set(raw.compactMap(KeyRemap.Feature.init(rawValue:)))
+        }
+        set {
+            defaults.set(newValue.map(\.rawValue).sorted(), forKey: Key.remapsOnLaunch.rawValue)
+        }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -35,6 +53,7 @@ final class Settings: ObservableObject {
         trackpadSustainEnabled = defaults.bool(forKey: Key.trackpadSustainEnabled.rawValue)
         trackpadDivider = defaults.double(forKey: Key.trackpadDivider.rawValue)
         trackpadSwapped = defaults.bool(forKey: Key.trackpadSwapped.rawValue)
+        applyRemapsOnLaunch = defaults.bool(forKey: Key.applyRemapsOnLaunch.rawValue)
     }
 
     func resetLevels() {
@@ -54,6 +73,8 @@ final class Settings: ObservableObject {
         case trackpadSustainEnabled = "trackpadSustainEnabled"
         case trackpadDivider = "trackpadDivider"
         case trackpadSwapped = "trackpadSwapped"
+        case applyRemapsOnLaunch = "applyRemapsOnLaunch"
+        case remapsOnLaunch = "remapsOnLaunch"
 
         static let registrationDefaults: [String: Any] = [
             Key.melodyLevel.rawValue: 0.5,
@@ -63,6 +84,7 @@ final class Settings: ObservableObject {
             Key.trackpadSustainEnabled.rawValue: true,
             Key.trackpadDivider.rawValue: 0.5,
             Key.trackpadSwapped.rawValue: false,
+            Key.applyRemapsOnLaunch.rawValue: false,
         ]
     }
 }

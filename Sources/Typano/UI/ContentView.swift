@@ -121,7 +121,7 @@ struct ContentView: View {
     private var capsLockHint: some View {
         HStack(spacing: 8) {
             Text("⚠")
-            Text("Caps Lock is still a toggle, so B3 is unavailable. Run `Scripts/remap.sh on` to remap it to F13.")
+            Text("Caps Lock is still a toggle, so B3 is unavailable. Turn on the Caps Lock remap in Preferences (⌘,).")
         }
         .font(.system(size: 11))
         .foregroundStyle(Palette.chord)

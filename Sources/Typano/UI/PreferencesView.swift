@@ -60,6 +60,27 @@ struct PreferencesView: View {
                     .foregroundStyle(.white.opacity(0.35))
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            section("Key remaps") {
+                ForEach(KeyRemap.Feature.allCases) { feature in
+                    remap(feature)
+                }
+
+                toggle("Re-apply at launch — the remaps are cleared by a reboot",
+                       isOn: $settings.applyRemapsOnLaunch)
+
+                if let error = instrument.remapError {
+                    Text(error)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Palette.chord)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Text(remapNote)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.35))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(22)
         .frame(width: Self.width, alignment: .leading)
@@ -72,7 +93,38 @@ struct PreferencesView: View {
     private var rightCommandNote: String {
         instrument.rightCommandRemapped
             ? "Right ⌘ is remapped to F16, so it carries no modifier meaning anywhere. Left ⌘ keeps every shortcut."
-            : "Right ⌘ is held back from the menu while it is the only ⌘ down, so it no longer fires ⌘H or ⌘Q. ⌘-Tab and ⌘-Space are handled above the app; `Scripts/remap.sh on` disables those too."
+            : "Right ⌘ is held back from the menu while it is the only ⌘ down, so it no longer fires ⌘H or ⌘Q. ⌘-Tab and ⌘-Space are handled above the app — only the remap below reaches those."
+    }
+
+    /// Says which of the two states the machine is actually in, rather than
+    /// which one the app last asked for.
+    private var remapNote: String {
+        if instrument.capsLockRemapStale {
+            return "The mapping is set, but this keyboard is still sending raw Caps Lock — hidutil only covers devices attached when it ran. Toggle Caps Lock off and on to cover it."
+        }
+        return "Applied with hidutil: no password, no restart, and cleared by a reboot. Scripts/remap.sh does the same thing from a shell if the app will not start."
+    }
+
+    /// Reads live from hidutil rather than from a stored preference, so a remap
+    /// applied by the script — or cleared by a reboot — shows up here.
+    private func remap(_ feature: KeyRemap.Feature) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Toggle(isOn: Binding(
+                get: { instrument.activeRemaps.contains(feature) },
+                set: { instrument.setRemap(feature, enabled: $0) }
+            )) {
+                Text(feature.title)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+            .toggleStyle(.switch)
+            .tint(Palette.control)
+
+            Text(feature.detail)
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.30))
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: - Pieces

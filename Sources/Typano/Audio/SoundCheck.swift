@@ -120,4 +120,76 @@ enum SoundCheck {
         print(failures.isEmpty ? "restart: PASS" : "restart: FAIL (\(failures.count))")
         return failures.isEmpty
     }
+
+    /// `Typano --check-remap` — reports the live `hidutil` table.
+    ///
+    /// Worth having as a check rather than a print: the parse is the part that
+    /// silently lies. `hidutil` emits an OpenStep plist, which has no number
+    /// type, so reading the values as `NSNumber` yields nil and the app reports
+    /// "nothing remapped" while both remaps are active.
+    static func remap() -> Bool {
+        let active = KeyRemap.active()
+        let foreign = KeyRemap.foreignEntries()
+
+        for feature in KeyRemap.Feature.allCases {
+            let on = active.contains(feature)
+            print(String(format: "  %@  %-16@  0x%llX -> 0x%llX",
+                         on ? "ON " : "off",
+                         feature.rawValue as NSString,
+                         feature.source, feature.destination))
+        }
+        if !foreign.isEmpty {
+            print("  \(foreign.count) entr\(foreign.count == 1 ? "y" : "ies") not owned by Typano — preserved on write")
+        }
+        print("remap: \(active.isEmpty ? "none active" : active.map(\.rawValue).sorted().joined(separator: " + "))")
+        return true
+    }
+
+    /// `Typano --check-remap --write` — exercises the write path and restores
+    /// the table to exactly what it found.
+    ///
+    /// Opt-in because it changes system-wide keyboard state for a moment. Worth
+    /// having: `hidutil` replaces the whole table on every call, so the only
+    /// thing standing between a user's unrelated remaps and oblivion is the
+    /// foreign-entry preservation here — and that cannot be checked by reading
+    /// the table, only by writing one and looking at what survived.
+    static func remapWrite() -> Bool {
+        let originalOurs = KeyRemap.active()
+        let originalForeign = KeyRemap.foreignEntries()
+        print("  before: ours=\(originalOurs.count) foreign=\(originalForeign.count)")
+
+        var failures = 0
+        func expect(_ condition: Bool, _ message: String) {
+            print("  \(condition ? "OK   " : "FAIL ") \(message)")
+            if !condition { failures += 1 }
+        }
+
+        defer {
+            try? KeyRemap.apply(originalOurs)
+            let restored = KeyRemap.active()
+            print("  restored: \(restored.map(\.rawValue).sorted().joined(separator: " + "))"
+                  + (restored.isEmpty ? "none" : ""))
+        }
+
+        do {
+            try KeyRemap.apply([.capsLock])
+            expect(KeyRemap.active() == [.capsLock], "applied capsLock only")
+
+            try KeyRemap.apply([.capsLock, .rightCommand])
+            expect(KeyRemap.active() == [.capsLock, .rightCommand], "applied both")
+
+            expect(KeyRemap.foreignEntries().count == originalForeign.count,
+                   "foreign entries preserved across writes (\(originalForeign.count))")
+
+            try KeyRemap.apply([])
+            expect(KeyRemap.active().isEmpty, "cleared ours")
+            expect(KeyRemap.foreignEntries().count == originalForeign.count,
+                   "foreign entries survive clearing ours — remap.sh off does not")
+        } catch {
+            expect(false, "apply threw: \(error.localizedDescription)")
+        }
+
+        print(failures == 0 ? "remap write: PASS" : "remap write: FAIL (\(failures))")
+        return failures == 0
+    }
 }

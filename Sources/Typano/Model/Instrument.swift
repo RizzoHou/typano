@@ -38,10 +38,22 @@ final class Instrument: ObservableObject {
     @Published private(set) var layoutIndex = 0
     @Published private(set) var timbreIndex = 0
     @Published private(set) var soundSource = "loading…"
-    @Published private(set) var capsLockRemapped = true
-    /// Set the first time keycode 106 arrives, i.e. `Scripts/remap.sh on` has
-    /// stripped right ⌘ of its modifier meaning.
-    @Published private(set) var rightCommandRemapped = false
+    /// What `hidutil` actually reports, re-read whenever the app becomes
+    /// active. The table survives app restarts and is cleared by a reboot, so
+    /// it can only be read, never remembered.
+    @Published private(set) var activeRemaps: Set<KeyRemap.Feature> = []
+    /// Set when a raw Caps Lock arrives — i.e. this keyboard is sending the
+    /// unremapped key. Distinct from `activeRemaps`: `hidutil` covers only the
+    /// devices attached when it ran, so a keyboard plugged in afterwards
+    /// reports the mapping while not obeying it.
+    @Published private(set) var sawRawCapsLock = false
+
+    var capsLockRemapped: Bool { activeRemaps.contains(.capsLock) && !sawRawCapsLock }
+    var rightCommandRemapped: Bool { activeRemaps.contains(.rightCommand) }
+    /// The mapping is set but this keyboard is not honouring it — the one case
+    /// the table alone cannot describe.
+    var capsLockRemapStale: Bool { activeRemaps.contains(.capsLock) && sawRawCapsLock }
+    @Published private(set) var remapError: String?
     @Published private(set) var stats = RolloverStats()
     @Published var showRollover = false
 
@@ -93,12 +105,50 @@ final class Instrument: ObservableObject {
 
         monitor.onKeyDown = { [weak self] in self?.keyDown($0) }
         monitor.onKeyUp = { [weak self] in self?.keyUp($0) }
-        monitor.onRawCapsLock = { [weak self] in self?.capsLockRemapped = false }
+        monitor.onRawCapsLock = { [weak self] in self?.sawRawCapsLock = true }
         monitor.onSustainLatchToggle = { [weak self] in self?.toggleLatch() }
         monitor.shouldSwallowPointer = { [weak self] in self?.shouldSwallowPointer($0) ?? false }
         monitor.start()
 
         observeSettings()
+
+        refreshRemapState()
+        if settings.applyRemapsOnLaunch, !settings.remapsOnLaunch.isEmpty {
+            setRemaps(settings.remapsOnLaunch)
+        }
+    }
+
+    // MARK: - Key remaps
+
+    /// Re-read the live table. Cheap enough to call on every activation, and it
+    /// has to be: a reboot clears the remaps behind the app's back, and the
+    /// user may run `Scripts/remap.sh` while the app is running.
+    func refreshRemapState() {
+        let active = KeyRemap.active()
+        guard active != activeRemaps else { return }
+        activeRemaps = active
+        // A fresh mapping supersedes whatever the keyboard was doing before it.
+        if active.contains(.capsLock) { sawRawCapsLock = false }
+    }
+
+    func setRemap(_ feature: KeyRemap.Feature, enabled: Bool) {
+        var wanted = activeRemaps
+        if enabled { wanted.insert(feature) } else { wanted.remove(feature) }
+        setRemaps(wanted)
+    }
+
+    private func setRemaps(_ wanted: Set<KeyRemap.Feature>) {
+        do {
+            try KeyRemap.apply(wanted)
+            sawRawCapsLock = false
+            remapError = nil
+        } catch {
+            remapError = error.localizedDescription
+        }
+        // Read back rather than assuming the write took: `hidutil` can accept
+        // the call and still not cover a device.
+        activeRemaps = KeyRemap.active()
+        settings.remapsOnLaunch = activeRemaps
     }
 
     /// Wired by the app delegate once the window exists.
@@ -231,7 +281,10 @@ final class Instrument: ObservableObject {
     // MARK: - Key handling
 
     private func keyDown(_ code: UInt16) {
-        if code == KC.f16 { rightCommandRemapped = true }
+        // F16 arriving used to be how the app inferred that right ⌘ was
+        // remapped. `hidutil` is now read directly, which is authoritative and
+        // works before any key is pressed — an inference could only ever flip
+        // one way, and never back.
         guard !held.contains(code) else { return }
         held.insert(code)
         stats.record(held)
