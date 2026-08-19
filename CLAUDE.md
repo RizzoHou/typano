@@ -14,13 +14,13 @@ ssh entry-mac 'cd ~/projects/typano && .build/arm64-apple-macosx/release/Typano 
 
 Sync before **every** remote command batch; the usual failure is debugging a stale remote tree.
 
-`Scripts/run.sh` (build + bundle + launch) has to be run **by the user, at the Mac** — `open` from an ssh session puts the window on a session nobody is looking at, and the whole point of launching is that a human plays it.
+`Scripts/install.sh` (build + bundle + install to `/Applications`) and `Scripts/run.sh` (build + bundle + launch in place) both have to be run **by the user, at the Mac** — `open` from an ssh session puts the window on a session nobody is looking at, and the whole point of launching is that a human plays it.
 
 ## What can and cannot be verified here
 
 Compilation, and `Typano --check-sound` / `--try-instrument <path>` (headless, runnable over ssh). `--check-sound` starts the **real** `AudioEngine`, not just a throwaway sampler, so it does prove the effect chain instantiates and connects, and it prints the level→dB curve.
 
-Four more headless checks, all starting the real engine and all asserting rather than printing:
+Three more headless checks, all starting the real engine and all asserting rather than printing:
 
 - `--check-restart` — forces the output-device recovery path and asserts a burst of triggers collapses to one rebuild, the engine restarts, and the bank and both tuned gains survive.
 - `--check-remap` — the live `hidutil` table. `--write` additionally round-trips a write and restores the table to what it found.
@@ -48,11 +48,13 @@ These are load-bearing and easy to regress:
 - **Left `⌘` keyDown goes to the menu; right `⌘` does not** (`KeyboardMonitor.rightCommandIsolated`) — while right ⌘ is the only ⌘ down the keystroke stays with the instrument, so holding it plays notes instead of firing ⌘H / ⌘Q. Two consequences: **no shortcut answers to right ⌘** (⌘L, ⌘R, ⌘1–4 are left-⌘ only), and `leftCommandDown` must stay tracked from `flagsChanged` or the isolation starts swallowing real shortcuts.
 - **`⌘` keyUp must still reach `onKeyUp`** whichever ⌘ it is, or the note is stranded and the key stays dead because `held` never loses the code.
 - **Right ⌘ latches, it never holds** — the toggle fires on release and only if nothing else was pressed during the hold. Isolation makes a held right ⌘ survivable; latching is still what the design wants, because resting beats holding for a whole phrase.
-- **A local monitor cannot reach ⌘-Tab / ⌘-Space** — WindowServer handles those before any app. Only the HID remap (`Scripts/remap.sh on rightcmd`, right ⌘ → F16) removes them. F16 is bound to the same `.sustainLatch`, and unlike right ⌘ it is an ordinary key, so `Instrument` toggles the latch on its keyDown rather than from the monitor's tap detection.
+- **A local monitor cannot reach ⌘-Tab / ⌘-Space** — WindowServer handles those before any app. Only the HID remap (right ⌘ → F16, from Preferences or `Scripts/remap.sh on rightcmd`) removes them. F16 is bound to the same `.sustainLatch`, and unlike right ⌘ it is an ordinary key, so `Instrument` toggles the latch on its keyDown rather than from the monitor's tap detection.
 - `.shift` cannot distinguish left from right Shift; read the device-dependent bits (`KC.DeviceFlag`).
 - **Modifier `flagsChanged` events are reported but not swallowed** — except Shift, which plays a note. The rollover tester can only measure what reaches `held`, and swallowing the rest desyncs the system's idea of which modifiers are down.
-- Caps Lock is a toggle with no key-up. It is bound as **F13** and requires `Scripts/remap.sh on`.
-- **`hidutil` replaces the whole `UserKeyMapping` table on every call**, so all remaps must be set in one command — `Scripts/remap.sh` exists for that reason and `capslock-remap.sh` is now a shim forwarding to it.
+- Caps Lock is a toggle with no key-up. It is bound as **F13** and requires the remap, applied from Preferences (`Scripts/remap.sh on` still works if the app will not start).
+- **`hidutil` replaces the whole `UserKeyMapping` table on every call**, so all remaps must be set in one command — that is why `Scripts/remap.sh` sets both and `capslock-remap.sh` is a shim. `KeyRemap.apply` also carries across entries Typano does not own; drop that and the app silently destroys any unrelated remap the user has set, which is what `remap.sh off` does.
+- **`hidutil` output is an OpenStep plist, which has no number type.** `PropertyListSerialization` parses it, but every value arrives as `String` — so `HIDKeyboardModifierMappingSrc as? NSNumber` yields nil and the app reports "nothing remapped" while both remaps are active, with a correct-looking parse and the right entry count. Parse via `String` → `UInt64`. An empty table prints `(null)`, whose non-dictionary member fails a whole-array `[[String: Any]]` cast, so `compactMap` the members instead.
+- **Remap state is read from `hidutil`, never remembered.** The table survives app restarts and is cleared by a reboot, so an inferred flag can only ever be wrong; it is re-read on app activation and when Preferences opens. `hidutil --set` covers only devices attached when it ran, so "the mapping is set" and "this keyboard obeys it" are different facts — `sawRawCapsLock` is what tells them apart.
 - The local `NSEvent` monitor needs no Accessibility permission. Keep it that way — do not reach for `CGEventTap`.
 - **Anything that silences the instrument must clear `Instrument.held` too.** `Performer.allNotesOff()` cannot reach it; that is what `Instrument.panic()` is for.
 - **A panel that accepts typing must call `Instrument.setNoteInputSuspended(true)`.** The monitor swallows every non-⌘ keyDown and turns it into a note — Shift included, since it is B2 — so without this, typing a filename into a save panel plays a scale and the text field receives nothing. It is a depth counter, not a flag, and it deliberately keeps delivering key-*ups* so a key released behind the panel still ends its note.
