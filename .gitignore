@@ -11,3 +11,8 @@ notes.md
 cof.md
 cot.md
 attachments/
+
+# Icon build artifacts — AppIcon.icns is committed, these are not
+Resources/AppIcon-preview.png
+Resources/AppIcon-sizes.png
+Resources/AppIcon.iconset/
