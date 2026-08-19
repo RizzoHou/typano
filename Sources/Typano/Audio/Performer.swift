@@ -92,6 +92,11 @@ final class Performer {
     // MARK: - Panic
 
     func allNotesOff() {
+        // Strums already in flight must not land after the panic. `chordNotes`
+        // is cleared below and CC123 has already gone out by the time a late
+        // callback fires, so its `startNote` would produce a note that nothing
+        // is left holding a reference to — permanently stuck.
+        chordGeneration += 1
         for key in Array(soundingNotes.keys) { noteOff(key: key) }
         stopChordNotes()
         chordOwner = nil

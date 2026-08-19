@@ -64,6 +64,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                            object: nil, queue: .main) { [weak self] _ in
             self?.instrument.setAppActive(false)
         }
+        centre.addObserver(forName: NSApplication.didBecomeActiveNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+            self?.instrument.setAppActive(true)
+        }
         centre.addObserver(forName: NSWindow.didBecomeKeyNotification,
                            object: window, queue: .main) { [weak self] _ in
             guard let self else { return }

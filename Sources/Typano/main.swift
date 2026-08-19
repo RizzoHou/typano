@@ -5,6 +5,10 @@ if CommandLine.arguments.contains("--check-sound") {
     exit(0)
 }
 
+if CommandLine.arguments.contains("--check-restart") {
+    exit(SoundCheck.restart() ? 0 : 1)
+}
+
 if let flag = CommandLine.arguments.firstIndex(of: "--try-instrument"),
    CommandLine.arguments.indices.contains(flag + 1) {
     SoundCheck.tryInstrument(path: CommandLine.arguments[flag + 1])

@@ -78,8 +78,18 @@ final class Instrument: ObservableObject {
     var octaveLabel: String { octaveShift == 0 ? "0" : (octaveShift > 0 ? "+\(octaveShift)" : "\(octaveShift)") }
 
     func start() {
+        // Wired before `start()` so a launch-time failure publishes through the
+        // same channel a later route failure does.
+        //
+        // A route change strands every sounding note and re-initialises the
+        // samplers out from under a latched CC64 — and `refreshPedal()` only
+        // sends CC64 on a transition, so without this the pedal would read down
+        // and behave up, permanently. `panic()` is the only thing that clears
+        // `held` as well as the sound.
+        audio.onRouteChange = { [weak self] in self?.panic() }
+        audio.onStatusChange = { [weak self] in self?.soundSource = $0 }
         audio.start()
-        soundSource = audio.sourceLabel
+        soundSource = audio.statusLabel
 
         monitor.onKeyDown = { [weak self] in self?.keyDown($0) }
         monitor.onKeyUp = { [weak self] in self?.keyUp($0) }
@@ -149,7 +159,12 @@ final class Instrument: ObservableObject {
     /// ⌘-Tabbing away mid-note would otherwise strand the note and leave CC64
     /// latched at 127 forever.
     func setAppActive(_ value: Bool) {
-        guard !value else { return }
+        guard !value else {
+            // Clicking away and back is a manual retry, so a stuck engine does
+            // not mean waiting out the backoff timer.
+            audio.recoverIfNeeded()
+            return
+        }
         setInstrumentFocused(false)
         panic()
     }
@@ -352,7 +367,8 @@ final class Instrument: ObservableObject {
         guard SoundLibrary.timbres.indices.contains(index) else { return }
         panic()
         timbreIndex = index
-        soundSource = audio.load(timbre: index)
+        audio.load(timbre: index)
+        soundSource = audio.statusLabel
     }
 
     func resetTranspose() {
