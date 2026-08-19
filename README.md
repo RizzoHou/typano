@@ -43,6 +43,8 @@ Three rules cover the whole grid: **右移一格 = 上五度 · 上排 = 加七 
 | `⌘R` | rollover tester |
 | `⌘1`–`⌘4` | timbre |
 | `⌘0` | reset transpose |
+| `⌘E` | start / stop recording audio |
+| `⌥⌘E` | start / stop recording video |
 | `⌘,` | preferences |
 
 ### Sustain
@@ -64,6 +66,17 @@ A second window that stays open beside the instrument, because balance is someth
 - **Melody / chord levels.** Two sliders. 50% is the tuned baseline, not unity; the curve is asymmetric (+6 dB at the top, −40 dB and then silence at the bottom) because the baseline already sits near the headroom ceiling.
 - **Sustain sources.** Turn any of the three off.
 - **Trackpad.** Divider position, which half sustains, and a live view of every contact on the pad.
+- **Key remaps.** Two switches that apply the `hidutil` remaps below, reading the live state rather than remembering what the app last asked for — so opening Typano onto an already-remapped keyboard shows the truth, and a reboot clearing the remaps shows up too.
+- **Recording.** Audio format, video frame rate, whether the pointer and the REC badge appear in video.
+
+### Recording (`⌘E` audio, `⌥⌘E` video)
+
+Both ask where to save first, then stream straight into that file; `⌘E` / `⌥⌘E` again stops.
+
+- **Audio** is a tap on the instrument's own audio graph, so the file contains Typano and nothing else — no other app, no system alert sounds, and no microphone, so the sound of the keys being struck is not in it. It needs no permission, and because the signal is taken before the hardware, it is unaffected by which output device is selected. AAC by default, 24-bit WAV optional.
+- **Video** captures this window with ScreenCaptureKit, picture and sound together. It needs Screen Recording permission, which macOS only grants to an app that is then relaunched. The REC badge is hidden from video takes by default, since it sits inside the captured window.
+
+Recording survives switching output device mid-take.
 
 ## Build and run
 
@@ -71,22 +84,35 @@ Requires Xcode's toolchain. The scripts select it per-invocation via `DEVELOPER_
 
 ```bash
 Scripts/fetch-sounds.sh          # once — downloads the piano sound bank (~310 MB)
-Scripts/remap.sh on              # once per boot — see below
-Scripts/run.sh                   # build, bundle, launch
+Scripts/install.sh               # build, bundle, install to /Applications
+Scripts/run.sh                   # or: build, bundle, launch in place
 ```
+
+`Scripts/install.sh` puts `Typano.app` in `/Applications` (falling back to `~/Applications`, never `sudo`) so it launches from the Dock, and links the sound bank into `~/Library/Application Support/Typano/Sounds` — an installed bundle cannot see the repo's `Sounds/` directory, and without the link it silently falls back to the system GM bank.
+
+Key remaps are applied from Preferences now, not from a shell. `Scripts/remap.sh` still works and is the way out if the app will not start.
 
 `Scripts/fetch-sounds.sh` honours `TYPANO_PROXY` / `https_proxy`, and falls back to a local proxy on port 7890 if one is listening.
 
 Diagnostics:
 
 ```bash
-.build/arm64-apple-macosx/release/Typano --check-sound              # sound sources, and the real graph
-.build/arm64-apple-macosx/release/Typano --try-instrument <path>    # probe one instrument file
+Typano --check-sound                 # sound sources, and the real graph
+Typano --check-restart               # the output-device recovery path
+Typano --check-remap [--write]       # live hidutil state; --write round-trips and restores
+Typano --check-recording <path>      # records an arpeggio and asserts on captured signal
+Typano --try-instrument <path>       # probe one instrument file
 ```
+
+All of these run headless over ssh, and all of them start the *real* engine rather than a stand-in. `--check-recording` asserts on a non-zero peak, not on the file existing, and deliberately triggers a graph rebuild mid-take to prove a recording survives an output-device change.
 
 ### Key remaps
 
-`Scripts/remap.sh on` applies both remaps Typano wants, via `hidutil` — no `sudo`, reversible with `off`, and reset by a reboot. Name one to apply it alone (`on caps`, `on rightcmd`); `hidutil` replaces the whole mapping table on every call, which is why both live in one script.
+Both remaps live in Preferences (`⌘,`) as switches. They are applied with `hidutil` — no `sudo`, reversible, and reset by a reboot. The app reads the live table rather than remembering what it last set, so the switches are correct even when the remaps were applied by something else, and it preserves any mapping it does not own — which `Scripts/remap.sh off` does not, since `hidutil` replaces the whole table on every call.
+
+Re-applying at launch is opt-in and off by default: starting an app should not silently change system-wide keyboard behaviour.
+
+`Scripts/remap.sh on` does the same thing from a shell, and remains the way out if the app will not start.
 
 - **Caps Lock → F13.** Caps Lock cannot be a note key as shipped: it is a toggle that emits no key-up event, so note duration is undefined, and it has a hardware debounce. Until you remap it, B3 is simply unavailable and the app says so.
 - **Right `⌘` → F16.** Optional. Strips right `⌘` of its modifier meaning everywhere so no shortcut at any level answers to it. Left `⌘` is untouched. The cost is that right `⌘` stops being `⌘` in every other app until you run `off` or reboot.

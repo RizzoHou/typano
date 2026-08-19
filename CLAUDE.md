@@ -20,7 +20,13 @@ Sync before **every** remote command batch; the usual failure is debugging a sta
 
 Compilation, and `Typano --check-sound` / `--try-instrument <path>` (headless, runnable over ssh). `--check-sound` starts the **real** `AudioEngine`, not just a throwaway sampler, so it does prove the effect chain instantiates and connects, and it prints the level→dB curve.
 
-**Not verifiable from Linux:** latency, timbre, loudness balance, key rollover, whether a resting thumb keeps being reported, light effects, anything about how it feels. The user is the only sensor for those — ask, don't assert.
+Four more headless checks, all starting the real engine and all asserting rather than printing:
+
+- `--check-restart` — forces the output-device recovery path and asserts a burst of triggers collapses to one rebuild, the engine restarts, and the bank and both tuned gains survive.
+- `--check-remap` — the live `hidutil` table. `--write` additionally round-trips a write and restores the table to what it found.
+- `--check-recording <path>` — records a real arpeggio, asserts on a **non-zero peak** (silence would still produce a valid file), triggers a graph rebuild mid-take, and reopens the result.
+
+**Not verifiable from Linux:** latency, timbre, loudness balance, key rollover, whether a resting thumb keeps being reported, light effects, anything about how it feels — and everything about video recording, since ScreenCaptureKit needs a GUI session and a TCC grant. The user is the only sensor for those — ask, don't assert.
 
 ## Rules
 
@@ -29,6 +35,9 @@ Compilation, and `Typano --check-sound` / `--try-instrument <path>` (headless, r
 - **Key layouts are compiled-in Swift values** (`Model/Layouts.swift`), not resource files — SwiftPM resource bundles complicate the hand-rolled `.app`.
 - **`notes.md`, `cof.md`, `cot.md` are user-edit-only.** Read them; never write them. They are gitignored.
 - **Windows are sized from their content, not from a rect.** Preferences is an `NSHostingController` sized to `fittingSize`; a hard-coded `contentRect` strands SwiftUI content in the top half, because the view stretches and its children do not.
+- **The app is installed by `Scripts/install.sh`, not run from `.build`.** An installed bundle cannot see the repo's `Sounds/`, because that search path is two levels up from the bundle; the installer links `~/Library/Application Support/Typano/Sounds` instead. Dropping the link makes the app fall back to the system GM bank *silently*.
+- **`Resources/AppIcon.icns` is generated, not hand-edited.** `swift Scripts/make-icon.swift` renders it with CoreGraphics; `--sheet` also writes a 16→256 contact sheet, which is the only way to catch a design that dissolves below 64 px. The `.icns` is committed, so an ordinary build never runs the generator — but `sync.sh --delete` will remove a freshly generated one from the Mac unless it is pulled back and committed first.
+- **Ad-hoc signing resets the Screen Recording grant on every rebuild**, because the designated requirement is the binary's cdhash. `bundle.sh` prefers a self-signed `Typano Dev` identity when the keychain has one. The symptom of getting this wrong is recording failing while System Settings still shows the toggle as on.
 - **Settings persist in `UserDefaults` under `com.rizzohou.typano`** and survive rebuilds. Changing a default in `Settings.swift` does nothing on a machine that has already run the app — that is the "my change had no effect" trap. Clear with `ssh entry-mac 'defaults delete com.rizzohou.typano'`.
 
 ## Input gotchas
@@ -46,6 +55,8 @@ These are load-bearing and easy to regress:
 - **`hidutil` replaces the whole `UserKeyMapping` table on every call**, so all remaps must be set in one command — `Scripts/remap.sh` exists for that reason and `capslock-remap.sh` is now a shim forwarding to it.
 - The local `NSEvent` monitor needs no Accessibility permission. Keep it that way — do not reach for `CGEventTap`.
 - **Anything that silences the instrument must clear `Instrument.held` too.** `Performer.allNotesOff()` cannot reach it; that is what `Instrument.panic()` is for.
+- **A panel that accepts typing must call `Instrument.setNoteInputSuspended(true)`.** The monitor swallows every non-⌘ keyDown and turns it into a note — Shift included, since it is B2 — so without this, typing a filename into a save panel plays a scale and the text field receives nothing. It is a depth counter, not a flag, and it deliberately keeps delivering key-*ups* so a key released behind the panel still ends its note.
+- **No menu shortcut may use ⇧**, for the same reason: Shift sounds B2 as the shortcut fires. Avoid ⌘A/⌘C/⌘V/⌘X/⌘Z/⌘S too — the main menu outranks the save panel's field editor and would break editing inside a panel the app itself opened.
 
 ## Trackpad
 
@@ -60,4 +71,7 @@ These are load-bearing and easy to regress:
 Primary voice is the Salamander SF2 (`Scripts/fetch-sounds.sh`), falling back to the system GM bank. Logic Pro's sampled pianos are **not** usable — see `DEVCHANGELOG.md` 2026-08-16 before trying again.
 
 - **`loadSoundBankInstrument` resets `overallGain`**, so `AudioEngine.load(timbre:)` re-applies the levels after every load. Reorder or drop that call and a ⌘1–⌘4 timbre switch silently throws away the user's balance.
+- **`AVAudioEngine` stops and uninitialises itself when the output device changes, and never restarts itself.** `AudioEngine.bringUp()` is shared by launch and recovery on purpose — the path a user exercises by unplugging headphones is the path `--check-sound` exercises at launch, and only one of the two can be tested from Linux. Two triggers feed it (the engine notification misses same-format device swaps; the CoreAudio listener misses rate changes), deduplicated by debounce rather than by identity.
+- **Reconnect before `prepare()`.** `prepare()` on a graph that is not connected raises an **Objective-C exception**, which Swift cannot catch — a crash, not a `throw`. Same for `engine.connect` with an invalid format, which is why `processingFormat()` returns nil and bails instead.
+- **Rebuilding the graph drops installed taps.** `restoreRecordingTap()` puts a recording tap back; without it a take in progress silently becomes silence with no error. The recorder resamples through an `AVAudioConverter` because the new device may run at a different rate.
 - **Level 0.5 is the tuned baseline, not unity.** Melody sits above chords by design: a chord fires four notes at once and sums roughly 12 dB louder than a single note at the same velocity.
