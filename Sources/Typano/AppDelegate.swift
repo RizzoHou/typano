@@ -179,16 +179,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem {
         case recordAudioItem:
-            menuItem.title = recording.mode == .idle || !isAudioRecording
-                ? "Record Audio" : "Stop Recording Audio"
-            if case .audio = recording.mode { menuItem.title = "Stop Recording Audio" }
+            menuItem.title = isAudioRecording ? "Stop Recording Audio" : "Record Audio"
             return recording.mode != .choosingLocation && !recording.isRecordingVideo
         case recordVideoItem:
-            if case .video = recording.mode {
-                menuItem.title = "Stop Recording Video"
-            } else {
-                menuItem.title = "Record Video"
-            }
+            menuItem.title = recording.isRecordingVideo ? "Stop Recording Video" : "Record Video"
             return recording.mode != .choosingLocation && !isAudioRecording
         case revealItem:
             return recording.lastRecording != nil
