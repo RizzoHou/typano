@@ -8,12 +8,28 @@ struct PreferencesView: View {
     @ObservedObject var instrument: Instrument
     @ObservedObject var settings: Settings
 
-    /// Fixed width, intrinsic height: the window is sized from this view's
+    /// Fixed width, intrinsic height: the window is sized from `content`'s
     /// fitting size, so it ends up exactly as tall as its contents instead of
-    /// stretching them across an arbitrary rectangle.
+    /// stretching them across an arbitrary rectangle — and no taller than the
+    /// screen, which is what the scroll view is for.
     static let width: CGFloat = 420
 
     var body: some View {
+        ScrollView(.vertical) {
+            content
+        }
+        // Only scrolls when there is something to scroll to: on a display tall
+        // enough for the whole panel this behaves exactly like the plain view
+        // it replaced, with no rubber-banding on a window that already fits.
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(width: Self.width)
+        .background(Palette.background)
+    }
+
+    /// The settings themselves, unscrolled. Kept separate because this — not
+    /// the scroll view, which has no intrinsic height of its own — is what the
+    /// window measures itself against.
+    var content: some View {
         VStack(alignment: .leading, spacing: 20) {
             section("Levels") {
                 level("Melody", value: $settings.melodyLevel, tint: Palette.melody)
@@ -117,7 +133,6 @@ struct PreferencesView: View {
         }
         .padding(22)
         .frame(width: Self.width, alignment: .leading)
-        .background(Palette.background)
     }
 
     /// Which of the two isolation mechanisms is actually in force. The in-app

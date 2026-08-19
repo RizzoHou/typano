@@ -2,6 +2,26 @@
 
 The append-only development record for Typano: why things changed, what was tried, and what it cost. Newest entry first; entries are never edited or removed — a reversed decision gets a new entry naming what it supersedes. Standing rules and invariants live in `CLAUDE.md`, not here; user-facing release notes would live in `CHANGELOG.md`.
 
+## 2026-08-19 — A video take that will not stop, and a preferences window taller than the screen
+
+- **What**: Two bugs found by playing the previous entry's build. Stopping a video take failed with `RPRecordingErrorDomain -5814`, and the preferences window ran off the bottom of the display with its last sections unreachable.
+
+- **Why the stop failed**: `ScreenRecorder.stop()` did `removeRecordingOutput` **and then** `stopCapture`, which is one teardown too many. `removeRecordingOutput` is itself a stop — it ends the recording and starts finalising the file, asynchronously, over the connection the stream owns. Stopping the capture in the next breath pulls that connection out from under the finalisation, so the take dies with `-5814`, which the ReplayKit header spells `RPRecordingErrorFailedApplicationConnectionInvalid`: "failed during recording, application connection invalid". The footage was fine; the file never got its `moov` atom. Stopping the capture alone both ends the recording and finalises it, so that is now the only call. Audio-only recording never had this — it is a graph tap, not ScreenCaptureKit, and `--check-recording` covers it.
+
+- **Why the error name was worth decoding**: `-5814` says nothing on its own and searching for it returns nothing useful. The enum lives in `ReplayKit.framework/Headers/RPError.h` inside the Mac's SDK, one `grep` away over ssh, and the comment on the case named the mechanism directly. Reading the header beat two web searches.
+
+- **Also fixed in the same path**: three callbacks can report the same take — `didStopWithError`, `recordingOutputDidFinishRecording`, `recordingOutput(_:didFailWithError:)` — and the old code let a second one through to `onUnexpectedStop`, which surfaces an error *after* a successful stop. Delivery is now once per take, gated on `destination` being non-nil, and a stream reporting its own shutdown during a deliberate stop is ignored because it says nothing about the file. A watchdog finishes the take if no callback arrives at all, since nothing else did and the HUD would sit on "recording" forever.
+
+- **Why the window overflowed**: sizing a window to its content's `fittingSize` is right up until the content is taller than the display, and then it is the same bug as the hard-coded rect it replaced — content that exists but cannot be reached. The settings now live in a `ScrollView`, and the window clamps to `visibleFrame` on **every** open rather than only at creation, because it is long-lived and can come back on a shorter screen.
+
+- **Paid lesson — a scroll view has no height to measure**: moving the content into a `ScrollView` breaks the `fittingSize` measurement that sized the window, because a scroll view answers "whatever you give me" to any height question. The fix is to keep the unscrolled content reachable as its own property and measure *that* in a throwaway `NSHostingView`, then host the scrolling version. Measuring the real root view yields a window a few points tall.
+
+- **Rejected**: shortening the panel by cutting the explanatory notes under each section. They are what make the remap and trackpad states legible, and the panel would grow past the screen again on the next feature. Also rejected: a tabbed preferences window — six short sections read better as one column, and scrolling costs nothing on a display that fits them.
+
+- **Files**: `Sources/Typano/Recording/ScreenRecorder.swift`, `Sources/Typano/UI/PreferencesView.swift`, `Sources/Typano/AppDelegate.swift`, `CLAUDE.md`
+
+- **Verify**: release build clean, and all four headless checks still pass (`--check-sound`, `--check-restart`, `--check-recording`, `--check-remap`). Neither fix can be verified from Linux: ScreenCaptureKit needs a GUI session and a TCC grant, and a window that fits the screen is a claim about a screen. The Mac has to settle both — start a video take, stop it with ⌘⌥E, and open the file.
+
 ## 2026-08-19 — Surviving a device change, becoming an app, owning the remaps, and recording
 
 - **What**: Four things. (1) The engine now recovers from an output-device change. (2) `Scripts/install.sh` puts a real, icon-bearing `Typano.app` in `/Applications`. (3) The `hidutil` remaps moved into Preferences and read their live state. (4) Recording, audio-only and video-with-audio.

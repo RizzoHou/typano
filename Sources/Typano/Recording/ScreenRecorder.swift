@@ -12,6 +12,8 @@ final class ScreenRecorder: NSObject, SCStreamDelegate, SCRecordingOutputDelegat
     enum Failure: LocalizedError {
         case notPermitted
         case windowNotShareable
+        case notRecording
+        case didNotFinalise
 
         var errorDescription: String? {
             switch self {
@@ -19,14 +21,25 @@ final class ScreenRecorder: NSObject, SCStreamDelegate, SCRecordingOutputDelegat
                 return "Typano needs Screen Recording permission to record its own window."
             case .windowNotShareable:
                 return "The instrument window is not available for capture — is it minimised?"
+            case .notRecording:
+                return "There is no video recording to stop."
+            case .didNotFinalise:
+                return "The video did not finish writing, so the file may be incomplete."
             }
         }
     }
 
     private var stream: SCStream?
     private var output: SCRecordingOutput?
+    /// Non-nil for exactly as long as a take is live. Doubles as the guard that
+    /// makes result delivery happen once: two of the three callbacks below can
+    /// arrive for the same take.
     private var destination: URL?
     private var finished: ((Result<URL, Error>) -> Void)?
+    /// Set the moment a deliberate stop begins, so a stream that reports its
+    /// own shutdown is not mistaken for a take that died.
+    private var isStopping = false
+    private var watchdog: DispatchWorkItem?
 
     /// Fired when the stream dies on its own: the window closed, the display
     /// went away, permission was revoked mid-take.
@@ -92,46 +105,101 @@ final class ScreenRecorder: NSObject, SCStreamDelegate, SCRecordingOutputDelegat
         self.stream = stream
         self.output = output
         self.destination = url
+        self.isStopping = false
     }
 
+    /// Stops the take by stopping the capture, and nothing else.
+    ///
+    /// Removing the recording output *and* stopping the stream is one teardown
+    /// too many. `removeRecordingOutput` is itself a stop: it ends the
+    /// recording and starts finalising the file, asynchronously, over the
+    /// connection the stream owns. Calling `stopCapture` in the next breath
+    /// pulls that connection out from under the finalisation, and the take dies
+    /// with `RPRecordingErrorDomain -5814`
+    /// (`failedApplicationConnectionInvalid`) on footage that was otherwise
+    /// perfectly good. Stopping the capture alone ends the recording and
+    /// finalises the file.
+    ///
     /// The file is not complete when this returns — it is complete when
     /// `recordingOutputDidFinishRecording` arrives.
     func stop(completion: @escaping (Result<URL, Error>) -> Void) {
-        guard let stream, let output else {
-            completion(.failure(Failure.windowNotShareable))
+        guard let stream, destination != nil else {
+            completion(.failure(Failure.notRecording))
             return
         }
+        // A second press while the file is still finalising is not a second
+        // stop. The one already in flight is what reports.
+        guard !isStopping else { return }
         finished = completion
+        isStopping = true
+        // Nothing else reports a stop that hangs, and the UI would sit on
+        // "recording" forever.
+        armWatchdog(after: 12, reporting: nil)
         Task {
-            try? stream.removeRecordingOutput(output)
-            try? await stream.stopCapture()
-            self.stream = nil
+            do {
+                try await stream.stopCapture()
+            } catch {
+                // Usually "already stopped", in which case a delegate callback
+                // is on its way; give it a moment before believing the throw.
+                self.armWatchdogOnMain(after: 2, reporting: error)
+            }
         }
     }
 
+    /// Every result funnels through here, and only the first one for a given
+    /// take is delivered — `didStopWithError` and one of the two recording-output
+    /// callbacks can both fire for the same stop.
     private func finish(_ result: Result<URL, Error>) {
         DispatchQueue.main.async {
+            guard self.destination != nil else { return }
+            self.watchdog?.cancel()
+            self.watchdog = nil
+            self.destination = nil
+            self.stream = nil
+            self.output = nil
+            self.isStopping = false
+
             guard let finished = self.finished else {
                 if case .failure(let error) = result { self.onUnexpectedStop?(error) }
                 return
             }
             self.finished = nil
-            self.output = nil
             finished(result)
         }
     }
 
+    private func armWatchdogOnMain(after seconds: TimeInterval, reporting error: Error?) {
+        DispatchQueue.main.async { self.armWatchdog(after: seconds, reporting: error) }
+    }
+
+    private func armWatchdog(after seconds: TimeInterval, reporting error: Error?) {
+        watchdog?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.finish(.failure(error ?? Failure.didNotFinalise))
+        }
+        watchdog = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: item)
+    }
+
     // MARK: - SCStreamDelegate
 
+    /// A stream reports its own shutdown whether or not anyone asked for it, so
+    /// during a deliberate stop this says nothing about the file — the
+    /// recording output does. Only an unasked-for stop is a failure.
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        finish(.failure(error))
+        DispatchQueue.main.async {
+            guard !self.isStopping else { return }
+            self.finish(.failure(error))
+        }
     }
 
     // MARK: - SCRecordingOutputDelegate
 
     func recordingOutputDidFinishRecording(_ recordingOutput: SCRecordingOutput) {
-        guard let destination else { return }
-        finish(.success(destination))
+        DispatchQueue.main.async {
+            guard let destination = self.destination else { return }
+            self.finish(.success(destination))
+        }
     }
 
     func recordingOutput(_ recordingOutput: SCRecordingOutput, didFailWithError error: Error) {

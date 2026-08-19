@@ -200,25 +200,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// setting change while the note that revealed the problem is still
     /// ringing.
     @objc private func showPreferences() {
-        if preferences == nil {
-            // Built around the hosting controller rather than a fixed rect, so
-            // the window is exactly as tall as the settings it holds. A hard
-            // -coded 500 pt left the content stranded in the top half.
-            let controller = NSHostingController(
-                rootView: PreferencesView(instrument: instrument, settings: instrument.settings))
-            controller.view.frame.size = controller.view.fittingSize
-
-            let panel = NSWindow(contentViewController: controller)
-            panel.styleMask = [.titled, .closable]
-            panel.title = "Typano Preferences"
-            panel.titlebarAppearsTransparent = true
-            panel.backgroundColor = NSColor(Palette.background)
-            panel.isReleasedWhenClosed = false
-            panel.setContentSize(controller.view.fittingSize)
-            panel.center()
-            preferences = panel
-        }
+        if preferences == nil { preferences = makePreferencesWindow() }
         instrument.refreshRemapState()
-        preferences?.makeKeyAndOrderFront(nil)
+        // Re-checked on every open, not just the first: the window is long-lived
+        // and may come back on a shorter display, or under a Dock that has since
+        // appeared.
+        if let panel = preferences {
+            fitToScreen(panel)
+            panel.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    private func makePreferencesWindow() -> NSWindow {
+        let root = PreferencesView(instrument: instrument, settings: instrument.settings)
+
+        // Measured against the *unscrolled* content: a scroll view is happy at
+        // any height, so asking the real root view how tall it wants to be
+        // answers "whatever you give me". A hard-coded 500 pt left the content
+        // stranded in the top half; this opens exactly as tall as the settings
+        // are, and `fitToScreen` takes it from there.
+        let natural = NSHostingView(rootView: root.content).fittingSize
+
+        let controller = NSHostingController(rootView: root)
+        controller.view.frame.size = natural
+
+        let panel = NSWindow(contentViewController: controller)
+        panel.styleMask = [.titled, .closable, .resizable]
+        panel.title = "Typano Preferences"
+        panel.titlebarAppearsTransparent = true
+        panel.backgroundColor = NSColor(Palette.background)
+        panel.isReleasedWhenClosed = false
+        panel.setContentSize(natural)
+        // Width is fixed by the design; only the height gives, and only down to
+        // where a section is still worth reading.
+        panel.contentMinSize = NSSize(width: PreferencesView.width, height: 260)
+        panel.contentMaxSize = NSSize(width: PreferencesView.width,
+                                      height: .greatestFiniteMagnitude)
+        // Resizable, so the green button exists; a settings panel has no
+        // business going full screen, and this turns it back into plain zoom —
+        // which here means "as tall as the screen allows".
+        panel.collectionBehavior.insert(.fullScreenNone)
+        panel.center()
+        return panel
+    }
+
+    /// Keeps the window inside the screen it opens on. Without this a panel
+    /// taller than the display hangs off the bottom, and the sections down there
+    /// cannot be reached at all.
+    private func fitToScreen(_ panel: NSWindow) {
+        guard let visible = (panel.screen ?? NSScreen.main)?.visibleFrame else { return }
+        var frame = panel.frame
+        guard frame.height > visible.height else { return }
+        frame.size.height = visible.height
+        frame.origin.y = visible.minY
+        frame.origin.x = min(max(frame.origin.x, visible.minX),
+                             visible.maxX - frame.width)
+        panel.setFrame(frame, display: true)
     }
 }
