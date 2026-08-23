@@ -2,6 +2,20 @@
 
 The append-only development record for Typano: why things changed, what was tried, and what it cost. Newest entry first; entries are never edited or removed — a reversed decision gets a new entry naming what it supersedes. Standing rules and invariants live in `CLAUDE.md`, not here; user-facing release notes would live in `CHANGELOG.md`.
 
+## 2026-08-23 — Quitting takes the remaps back down
+
+- **What**: The app now undoes the `hidutil` remaps it turned on when it quits — red button, ⌘Q or logout — instead of leaving Caps Lock and right ⌘ rewired system-wide until a reboot or a manual `Scripts/remap.sh off`. New Preferences toggle "Undo on quit", on by default, and `applicationWillTerminate` was simply absent before this.
+
+- **Why the counterpart was missing**: "Re-apply at launch" reads as a session-scoped convenience, but `hidutil` writes a per-boot, system-wide property that outlives the process — so applying at launch without undoing at quit is a one-way change to every other app's keyboard. Nothing puts it back on its own, and the app had no termination hook at all.
+
+- **Why session ownership rather than a remembered table**: restoring the table as it was found would delete a remap the user set from `Scripts/remap.sh` *before* launching, and re-add one they deliberately switched off in Preferences *during* the session. `KeyRemap.Session` tracks only what the app's own writes turned on, drops ownership of anything cleared behind its back, and quitting subtracts exactly that set. Launch also unions rather than assigns now, for the same reason — it was silently dropping a script-set remap that was not in `remapsOnLaunch`.
+
+- **Why not route the undo through `setRemaps`**: that stores `remapsOnLaunch`, so undoing through it would erase the very set "Re-apply at launch" exists to re-apply — the app would restore correctly once and then come up unremapped forever.
+
+- **Files**: `Sources/Typano/Input/KeyRemap.swift`, `Sources/Typano/Model/Instrument.swift`, `Sources/Typano/Model/Settings.swift`, `Sources/Typano/AppDelegate.swift`, `Sources/Typano/UI/PreferencesView.swift`, `Sources/Typano/Audio/SoundCheck.swift`, `CLAUDE.md`
+
+- **Verify**: `--check-remap --write` now plays the whole lifecycle against the live table and asserts on it — a shell-set remap before launch, the launch auto-apply on top, then the quit undo — proving only what the run added comes off and that a remap toggled off in-app is not resurrected. What Linux cannot prove is that `applicationWillTerminate` fires from the red button; that needs the Mac.
+
 ## 2026-08-19 — A video take that will not stop, and a preferences window taller than the screen
 
 - **What**: Two bugs found by playing the previous entry's build. Stopping a video take failed with `RPRecordingErrorDomain -5814`, and the preferences window ran off the bottom of the display with its last sections unreachable.

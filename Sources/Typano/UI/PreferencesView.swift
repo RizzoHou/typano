@@ -84,6 +84,8 @@ struct PreferencesView: View {
 
                 toggle("Re-apply at launch — the remaps are cleared by a reboot",
                        isOn: $settings.applyRemapsOnLaunch)
+                toggle("Undo on quit — leave the keyboard as Typano found it",
+                       isOn: $settings.restoreRemapsOnQuit)
 
                 if let error = instrument.remapError {
                     Text(error)
@@ -150,7 +152,7 @@ struct PreferencesView: View {
         if instrument.capsLockRemapStale {
             return "The mapping is set, but this keyboard is still sending raw Caps Lock — hidutil only covers devices attached when it ran. Toggle Caps Lock off and on to cover it."
         }
-        return "Applied with hidutil: no password, no restart, and cleared by a reboot. Scripts/remap.sh does the same thing from a shell if the app will not start."
+        return "Applied with hidutil: no password, no restart, and cleared by a reboot. The mapping is system-wide and outlives the app, so quitting undoes what this run switched on — a remap set from Scripts/remap.sh beforehand is left alone."
     }
 
     private var recordingNote: String {

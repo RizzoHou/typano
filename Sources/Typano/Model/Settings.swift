@@ -51,6 +51,14 @@ final class Settings: ObservableObject {
     /// a trip to Preferences after every reboot, since the remaps are per-boot.
     @Published var applyRemapsOnLaunch: Bool { didSet { store(applyRemapsOnLaunch, .applyRemapsOnLaunch) } }
 
+    /// Take the remaps back down when the app quits. On by default, and the
+    /// counterpart to `applyRemapsOnLaunch`: the mapping is a system-wide,
+    /// per-boot setting that outlives the process, so without this a quit
+    /// leaves Caps Lock and right ⌘ rewired for every other app until the next
+    /// reboot. Only what this run turned on is undone — a remap set from
+    /// `Scripts/remap.sh` before launch is left alone.
+    @Published var restoreRemapsOnQuit: Bool { didSet { store(restoreRemapsOnQuit, .restoreRemapsOnQuit) } }
+
     /// Which remaps to re-apply, remembered from the last time they were
     /// changed in-app. Stored as raw strings so the set survives a schema
     /// change in `KeyRemap.Feature` without crashing on an unknown case.
@@ -78,6 +86,7 @@ final class Settings: ObservableObject {
         trackpadDivider = defaults.double(forKey: Key.trackpadDivider.rawValue)
         trackpadSwapped = defaults.bool(forKey: Key.trackpadSwapped.rawValue)
         applyRemapsOnLaunch = defaults.bool(forKey: Key.applyRemapsOnLaunch.rawValue)
+        restoreRemapsOnQuit = defaults.bool(forKey: Key.restoreRemapsOnQuit.rawValue)
         recordingFormat = defaults.string(forKey: Key.recordingFormat.rawValue) ?? "aac"
         recordingVideoFPS = defaults.integer(forKey: Key.recordingVideoFPS.rawValue)
         recordingShowsCursor = defaults.bool(forKey: Key.recordingShowsCursor.rawValue)
@@ -103,6 +112,7 @@ final class Settings: ObservableObject {
         case trackpadDivider = "trackpadDivider"
         case trackpadSwapped = "trackpadSwapped"
         case applyRemapsOnLaunch = "applyRemapsOnLaunch"
+        case restoreRemapsOnQuit = "restoreRemapsOnQuit"
         case remapsOnLaunch = "remapsOnLaunch"
         case recordingFormat = "recordingFormat"
         case recordingVideoFPS = "recordingVideoFPS"
@@ -119,6 +129,7 @@ final class Settings: ObservableObject {
             Key.trackpadDivider.rawValue: 0.5,
             Key.trackpadSwapped.rawValue: false,
             Key.applyRemapsOnLaunch.rawValue: false,
+            Key.restoreRemapsOnQuit.rawValue: true,
             Key.recordingFormat.rawValue: "aac",
             Key.recordingVideoFPS.rawValue: 60,
             Key.recordingShowsCursor.rawValue: false,

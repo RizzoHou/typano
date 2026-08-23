@@ -53,6 +53,40 @@ enum KeyRemap {
         }
     }
 
+    // MARK: - Session ownership
+
+    /// What one run of the app turned on, so quitting can put the table back
+    /// the way it found it.
+    ///
+    /// The distinction this exists for: `hidutil` state is per-boot and
+    /// survives the process, so the remaps have to be taken down deliberately —
+    /// but restoring the table *wholesale* would delete a remap the user set
+    /// from `Scripts/remap.sh` before launching, which the app never owned.
+    struct Session {
+        /// Features this run switched on and has not switched off again.
+        private(set) var owned: Set<Feature> = []
+
+        /// Folds in one of the app's own writes: what it turned on becomes ours
+        /// to take back down, what it turned off stops being ours.
+        mutating func record(before: Set<Feature>, after: Set<Feature>) {
+            owned.formUnion(after.subtracting(before))
+            owned.subtract(before.subtracting(after))
+        }
+
+        /// Drops ownership of anything no longer active. The table can change
+        /// behind the app's back — a reboot clears it, the script rewrites it —
+        /// and claiming something the app did not set would delete it on quit.
+        mutating func reconcile(with active: Set<Feature>) {
+            owned.formIntersection(active)
+        }
+
+        /// The table to leave behind on quit: everything active except what
+        /// this run put there.
+        func releasing(_ active: Set<Feature>) -> Set<Feature> {
+            active.subtracting(owned)
+        }
+    }
+
     // MARK: - Reading
 
     /// What `hidutil` reports right now.

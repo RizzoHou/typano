@@ -52,6 +52,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
+    /// The remaps are a system-wide, per-boot `hidutil` property: they outlive
+    /// the process, so quitting has to take them back down explicitly. This runs
+    /// for the red button (via the last-window-closed rule above), ⌘Q and a
+    /// logout — every ordinary way out. Synchronous on purpose; two short
+    /// `hidutil` calls, and an async one would not finish before exit.
+    func applicationWillTerminate(_ notification: Notification) {
+        instrument.restoreRemapsForQuit()
+    }
+
     // MARK: - Content
 
     /// The trackpad surface is the content view and the SwiftUI tree lives

@@ -185,6 +185,36 @@ enum SoundCheck {
             expect(KeyRemap.active().isEmpty, "cleared ours")
             expect(KeyRemap.foreignEntries().count == originalForeign.count,
                    "foreign entries survive clearing ours — remap.sh off does not")
+
+            // The quit path, played out against the real table: a remap set
+            // from the shell before launch, the launch auto-apply on top of it,
+            // then termination. Only the second one may come back off — undoing
+            // by restoring a remembered table wholesale would delete the first.
+            var session = KeyRemap.Session()
+            try KeyRemap.apply([.capsLock])
+            let atLaunch = KeyRemap.active()
+            session.reconcile(with: atLaunch)
+
+            try KeyRemap.apply(atLaunch.union([.rightCommand]))
+            session.record(before: atLaunch, after: KeyRemap.active())
+            expect(KeyRemap.active() == [.capsLock, .rightCommand],
+                   "launch adds to what it found")
+
+            try KeyRemap.apply(session.releasing(KeyRemap.active()))
+            expect(KeyRemap.active() == [.capsLock],
+                   "quit removes only what this run added")
+
+            // Turned off by hand during the session, then quit: nothing left to
+            // undo, and nothing resurrected.
+            var toggled = KeyRemap.Session()
+            let none = Set<KeyRemap.Feature>()
+            try KeyRemap.apply([.rightCommand])
+            toggled.record(before: none, after: KeyRemap.active())
+            let onScreen = KeyRemap.active()
+            try KeyRemap.apply([])
+            toggled.record(before: onScreen, after: KeyRemap.active())
+            try KeyRemap.apply(toggled.releasing(KeyRemap.active()))
+            expect(KeyRemap.active().isEmpty, "quit does not re-add a remap turned off in-app")
         } catch {
             expect(false, "apply threw: \(error.localizedDescription)")
         }

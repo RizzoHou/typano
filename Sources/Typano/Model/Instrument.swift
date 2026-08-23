@@ -54,6 +54,10 @@ final class Instrument: ObservableObject {
     /// the table alone cannot describe.
     var capsLockRemapStale: Bool { activeRemaps.contains(.capsLock) && sawRawCapsLock }
     @Published private(set) var remapError: String?
+    /// What this run turned on, so quitting can take exactly that back down —
+    /// see `restoreRemapsForQuit()`.
+    private var remapSession = KeyRemap.Session()
+    private var didRestoreRemaps = false
     @Published private(set) var stats = RolloverStats()
     @Published var showRollover = false
 
@@ -117,7 +121,10 @@ final class Instrument: ObservableObject {
 
         refreshRemapState()
         if settings.applyRemapsOnLaunch, !settings.remapsOnLaunch.isEmpty {
-            setRemaps(settings.remapsOnLaunch)
+            // Union, not assignment: a remap already set from the shell is not
+            // Typano's to remove, and the quit path only takes back down what
+            // this addition put there.
+            setRemaps(activeRemaps.union(settings.remapsOnLaunch))
         }
     }
 
@@ -135,6 +142,9 @@ final class Instrument: ObservableObject {
     /// user may run `Scripts/remap.sh` while the app is running.
     func refreshRemapState() {
         let active = KeyRemap.active()
+        // Before the early-out: a remap cleared behind the app's back stops
+        // being the app's to undo, even on a call that changes nothing else.
+        remapSession.reconcile(with: active)
         guard active != activeRemaps else { return }
         activeRemaps = active
         // A fresh mapping supersedes whatever the keyboard was doing before it.
@@ -148,6 +158,7 @@ final class Instrument: ObservableObject {
     }
 
     private func setRemaps(_ wanted: Set<KeyRemap.Feature>) {
+        let before = activeRemaps
         do {
             try KeyRemap.apply(wanted)
             sawRawCapsLock = false
@@ -158,7 +169,32 @@ final class Instrument: ObservableObject {
         // Read back rather than assuming the write took: `hidutil` can accept
         // the call and still not cover a device.
         activeRemaps = KeyRemap.active()
+        remapSession.record(before: before, after: activeRemaps)
         settings.remapsOnLaunch = activeRemaps
+    }
+
+    /// Takes back down the remaps *this run* turned on, leaving the table as
+    /// Typano found it. Called from `applicationWillTerminate`, so it covers the
+    /// red button, ⌘Q and a logout alike.
+    ///
+    /// It has to be explicit: `hidutil` writes a per-boot system-wide property,
+    /// which outlives the process — nothing puts it back on its own, and the
+    /// symptom is Caps Lock still playing F13 in every other app until the next
+    /// reboot.
+    ///
+    /// Deliberately not `setRemaps`: that stores `remapsOnLaunch`, so undoing
+    /// through it would also erase the very set "Re-apply at launch" re-applies
+    /// next time.
+    func restoreRemapsForQuit() {
+        guard !didRestoreRemaps else { return }
+        didRestoreRemaps = true
+        guard settings.restoreRemapsOnQuit else { return }
+
+        let active = KeyRemap.active()
+        let wanted = remapSession.releasing(active)
+        guard wanted != active else { return }
+        try? KeyRemap.apply(wanted)
+        activeRemaps = KeyRemap.active()
     }
 
     /// Wired by the app delegate once the window exists.
