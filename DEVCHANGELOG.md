@@ -2,6 +2,18 @@
 
 The append-only development record for Typano: why things changed, what was tried, and what it cost. Newest entry first; entries are never edited or removed — a reversed decision gets a new entry naming what it supersedes. Standing rules and invariants live in `CLAUDE.md`, not here; user-facing release notes would live in `CHANGELOG.md`.
 
+## 2026-08-23 — The fix was right and the app was old: driving the GUI from ssh
+
+- **What**: The undo shipped in the previous entry did not appear on the Mac, because `/Applications/Typano.app` was four days old — building over ssh writes `.build/`, and only `Scripts/install.sh` touches the bundle the Dock launches. Installing over ssh fixed it. `NSAppleScriptEnabled` added to the bundle so the red-button path can be exercised from a shell.
+
+- **Why it looked like the fix failed**: `--check-remap --write` passed and the app still misbehaved, which reads as a bad fix but was two different binaries. The headless checks run `.build/...`; the user runs the Dock icon. Any change the user will judge by launching the app now has to be installed, not just built.
+
+- **Also wrong in `CLAUDE.md`**: it claimed `install.sh` needed a human at the Mac. It does not — it never calls `open`. Only `run.sh` does.
+
+- **Why enable AppleScript**: `osascript -e 'tell application "Typano" to close window 1'` is the red button, and Cocoa's Standard Suite provides it for one Info.plist key with no dictionary of our own. That turns "does `applicationWillTerminate` fire when the window closes" from a claim into a check — the class of question this project could previously only hand back to the user.
+
+- **Verify**: end to end against the live table, three runs. Empty → launch → 2 entries → close window 1 → process gone, table empty. And the ownership case: Caps Lock set from the shell *before* launch → 2 entries while running → only Caps Lock left after the close, so the app took back exactly what it added.
+
 ## 2026-08-23 — Quitting takes the remaps back down
 
 - **What**: The app now undoes the `hidutil` remaps it turned on when it quits — red button, ⌘Q or logout — instead of leaving Caps Lock and right ⌘ rewired system-wide until a reboot or a manual `Scripts/remap.sh off`. New Preferences toggle "Undo on quit", on by default, and `applicationWillTerminate` was simply absent before this.

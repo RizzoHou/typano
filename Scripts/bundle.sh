@@ -37,6 +37,11 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>LSApplicationCategoryType</key> <string>public.app-category.music</string>
     <key>NSHighResolutionCapable</key>   <true/>
     <key>NSPrincipalClass</key>          <string>NSApplication</string>
+    <!-- Lets a headless ssh session drive the window: `osascript -e 'tell
+         application "Typano" to close window 1'` is the red button, which is
+         otherwise unverifiable from Linux. Cocoa supplies the Standard Suite;
+         there is no scripting dictionary of our own. -->
+    <key>NSAppleScriptEnabled</key>     <true/>
 </dict>
 </plist>
 PLIST

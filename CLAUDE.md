@@ -14,7 +14,7 @@ ssh entry-mac 'cd ~/projects/typano && .build/arm64-apple-macosx/release/Typano 
 
 Sync before **every** remote command batch; the usual failure is debugging a stale remote tree.
 
-`Scripts/install.sh` (build + bundle + install to `/Applications`) and `Scripts/run.sh` (build + bundle + launch in place) both have to be run **by the user, at the Mac** — `open` from an ssh session puts the window on a session nobody is looking at, and the whole point of launching is that a human plays it.
+`Scripts/install.sh` (build + bundle + install to `/Applications`) runs fine over ssh — it never calls `open`. **Run it after every fix the user will test by launching the app**: building over ssh writes `.build/`, which is not what the Dock launches, so a fix can be verified as PASS by the headless checks and still be absent from the app they click. `/Applications/Typano.app` changes only when `install.sh` runs. `Scripts/run.sh` (build + bundle + launch in place) is the one that wants a human at the Mac, because the point of launching is that someone plays it.
 
 ## What can and cannot be verified here
 
@@ -27,6 +27,15 @@ Three more headless checks, all starting the real engine and all asserting rathe
 - `--check-recording <path>` — records a real arpeggio, asserts on a **non-zero peak** (silence would still produce a valid file), triggers a graph rebuild mid-take, and reopens the result.
 
 **Decoding an opaque framework error beats searching for it.** `hidutil`, ReplayKit and CoreAudio all report bare integers, and the web knows nothing about most of them. The enum is one grep away in the Mac's SDK, and its comment usually names the mechanism: `ssh entry-mac 'grep -rn -- -5814 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/ReplayKit.framework/Headers/'`.
+
+**The GUI is drivable from ssh** while the user is logged in at the console, which is how a window or termination path gets verified rather than assumed:
+
+```bash
+ssh entry-mac 'open -a /Applications/Typano.app; sleep 10; hidutil property --get UserKeyMapping'
+ssh entry-mac 'osascript -e "tell application \"Typano\" to close window 1"'   # the red button
+```
+
+The close needs `NSAppleScriptEnabled` in `Scripts/bundle.sh`'s Info.plist — Cocoa's Standard Suite then answers `close` and `quit` with no scripting dictionary of our own. Launching steals focus on the user's screen and the instrument eats their keystrokes until it quits, so keep these runs short and say when one is coming.
 
 **Not verifiable from Linux:** latency, timbre, loudness balance, key rollover, whether a resting thumb keeps being reported, light effects, anything about how it feels — and everything about video recording, since ScreenCaptureKit needs a GUI session and a TCC grant. The user is the only sensor for those — ask, don't assert.
 
