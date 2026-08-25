@@ -2,6 +2,24 @@
 
 The append-only development record for Typano: why things changed, what was tried, and what it cost. Newest entry first; entries are never edited or removed — a reversed decision gets a new entry naming what it supersedes. Standing rules and invariants live in `CLAUDE.md`, not here; user-facing release notes would live in `CHANGELOG.md`.
 
+## 2026-08-25 — The mapping follows the keyboard, after FreePiano
+
+- **What**: One mapping became three keyboards. The built-in MacBook keeps the melody-plus-chord-grid layout; external 98 and full-size (ANSI 104/108) boards get FreePiano's default map key for key — four diatonic rows across the main block, the numeric keypad and editing cluster carrying the right hand. Picked from Instrument ▸ Keyboard or Preferences, persisted. New `--check-layout` asserts the maps.
+
+- **Why the chord grid is not a preference**: it exists because the built-in matrix cannot report enough simultaneous right-hand keys to play a chord as notes — that is the sentence in `Layouts.swift` that justified it. An external board is n-key rollover, so on those keyboards the workaround has nothing left to work around and the right hand plays real notes. Tying it to the keyboard rather than to a menu keeps the reason and the setting in the same place; a user who picks "98" cannot accidentally keep a compromise they no longer need.
+
+- **Why copy FreePiano's pitches exactly**: Z=C2, A=C3, Q=C4 (middle C), 1=C5, keypad 1=C4, PgUp=A6. Anchoring anywhere else would have been a strictly private dialect — FreePiano's sheet music and anyone's habits are worth more than an octave of convenience, and F5–F8 move the register anyway. It also costs the left hand an octave versus the old MacBook anchor, which is why the two families deliberately differ: the MacBook layout has three rows centred on middle C and no room for a fourth.
+
+- **Why the audio channels changed axis**: they were melody and chords. On an external board the right hand plays melody, so the old names were actively wrong. They are now left and right hand, which makes FreePiano's per-channel octave and velocity implementable one-for-one — and made "velocity" a visible concept for the first time: it was three constants in `Performer`, and is now live state on `Instrument`, in the header, on F9–F12, and on a Preferences slider. The stored `UserDefaults` keys are still `melodyLevel` / `chordLevel`; renaming them would have silently reset a balance tuned by ear.
+
+- **Why the baseline gain follows the layout, not the hand**: the −12 dB the right channel carried is compensation for four notes summing at once, not a property of being the right hand. A right hand playing single notes now takes the note baseline, so the diatonic layout does not arrive quiet.
+
+- **Three deviations from FreePiano, all deliberate**: the arrows stay ♯/♭ and key ∓ rather than becoming C3–F3, which are duplicated on the left hand anyway and are the cheapest four notes in the map; the pedal keys stay (FreePiano has none — it pins the left channel's sustain on in the map header); F1/F2 keyboard groups are not implemented, because the layout follows the keyboard here rather than a key. Esc was added as a second sustain latch: a 98 usually ends its bottom row Alt / Fn, with no right ⌘ for the latch to live on.
+
+- **Files**: `Sources/Typano/Model/{Layout,Layouts,KeyboardModel,Instrument,Settings}.swift`, `Sources/Typano/UI/{PhysicalKeyboard,ContentView,PreferencesView,KeyCapView}.swift`, `Sources/Typano/Audio/{AudioEngine,Performer,SoundCheck}.swift`, `Sources/Typano/Input/KeyCodes.swift`, `CLAUDE.md`
+
+- **Verify**: `--check-layout` (new) asserts the anchors, that every row of every drawn keyboard sums to the same width, that the four rows stack in octaves column by column, that the right-hand run repeats no note, and that no control key was swallowed by a lengthened note row — it caught four wrong expectations and one useless assertion on its first run. `--check-sound`, `--check-restart`, `--check-remap`, `--check-recording` all still pass. **Not verified**: the drawn geometry. `screencapture` over ssh dies with "could not create image from display" for want of a TCC grant, so which editing keys sit in the 98's right-hand column is a guess — vendors disagree, and the mapping is by key code, so a wrong drawing still plays correctly.
+
 ## 2026-08-23 — The fix was right and the app was old: driving the GUI from ssh
 
 - **What**: The undo shipped in the previous entry did not appear on the Mac, because `/Applications/Typano.app` was four days old — building over ssh writes `.build/`, and only `Scripts/install.sh` touches the bundle the Dock launches. Installing over ssh fixed it. `NSAppleScriptEnabled` added to the bundle so the red-button path can be exercised from a shell.

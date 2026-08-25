@@ -80,6 +80,56 @@ enum KC {
     static let down: UInt16 = 125
     static let up: UInt16 = 126
 
+    static let escape: UInt16 = 0x35
+
+    /// Function row. Their codes are famously out of order — F3 sits between
+    /// F7 and F8 — so they are written as the SDK spells them rather than
+    /// derived from F1.
+    static let f1: UInt16 = 0x7A
+    static let f2: UInt16 = 0x78
+    static let f3: UInt16 = 0x63
+    static let f4: UInt16 = 0x76
+    static let f5: UInt16 = 0x60
+    static let f6: UInt16 = 0x61
+    static let f7: UInt16 = 0x62
+    static let f8: UInt16 = 0x64
+    static let f9: UInt16 = 0x65
+    static let f10: UInt16 = 0x6D
+    static let f11: UInt16 = 0x67
+    static let f12: UInt16 = 0x6F
+
+    /// Numeric keypad. Present on the external boards, absent on the MacBook —
+    /// which is the whole reason a layout has to know which keyboard it is for.
+    static let keypadDecimal: UInt16 = 0x41
+    static let keypadMultiply: UInt16 = 0x43
+    static let keypadPlus: UInt16 = 0x45
+    /// A PC keyboard's Num Lock arrives as Clear; macOS has no Num Lock state.
+    static let keypadClear: UInt16 = 0x47
+    static let keypadDivide: UInt16 = 0x4B
+    static let keypadEnter: UInt16 = 0x4C
+    static let keypadMinus: UInt16 = 0x4E
+    /// Apple keypads only — a PC numpad has no `=`.
+    static let keypadEquals: UInt16 = 0x51
+    static let keypad0: UInt16 = 0x52
+    static let keypad1: UInt16 = 0x53
+    static let keypad2: UInt16 = 0x54
+    static let keypad3: UInt16 = 0x55
+    static let keypad4: UInt16 = 0x56
+    static let keypad5: UInt16 = 0x57
+    static let keypad6: UInt16 = 0x58
+    static let keypad7: UInt16 = 0x59
+    static let keypad8: UInt16 = 0x5B
+    static let keypad9: UInt16 = 0x5C
+
+    /// Editing cluster. A PC keyboard's Insert arrives as Help, and its Delete
+    /// is `forwardDelete` — `delete` above is Backspace.
+    static let help: UInt16 = 0x72
+    static let home: UInt16 = 0x73
+    static let pageUp: UInt16 = 0x74
+    static let forwardDelete: UInt16 = 0x75
+    static let end: UInt16 = 0x77
+    static let pageDown: UInt16 = 0x79
+
     /// Device-dependent modifier bits (IOKit `NX_DEVICE*KEYMASK`), needed
     /// because the cooked flags — `.shift`, `.command`, … — cannot tell left
     /// from right. `fn` has no device bit; it is detected by key code plus

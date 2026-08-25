@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                      settings: instrument.settings)
     private var window: NSWindow!
     private var preferences: NSWindow?
+    private var switchLayoutItem: NSMenuItem!
     private var recordAudioItem: NSMenuItem!
     private var recordVideoItem: NSMenuItem!
     private var revealItem: NSMenuItem!
@@ -128,7 +129,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let instrumentItem = NSMenuItem()
         let instrumentMenu = NSMenu(title: "Instrument")
-        instrumentMenu.addItem(item("Switch Chord Layout", #selector(switchLayout), "l"))
+        let keyboardItem = NSMenuItem(title: "Keyboard", action: nil, keyEquivalent: "")
+        let keyboardMenu = NSMenu(title: "Keyboard")
+        for (index, model) in KeyboardModel.allCases.enumerated() {
+            let entry = item(model.title, #selector(selectKeyboard(_:)), "")
+            entry.tag = index
+            keyboardMenu.addItem(entry)
+        }
+        keyboardItem.submenu = keyboardMenu
+        instrumentMenu.addItem(keyboardItem)
+
+        switchLayoutItem = item("Switch Layout", #selector(switchLayout), "l")
+        instrumentMenu.addItem(switchLayoutItem)
         instrumentMenu.addItem(item("Rollover Tester", #selector(toggleRollover), "r"))
         instrumentMenu.addItem(.separator())
         for (index, name) in SoundLibrary.timbreNames.enumerated() {
@@ -171,6 +183,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func switchLayout() { instrument.switchLayout() }
 
+    @objc private func selectKeyboard(_ sender: NSMenuItem) {
+        guard KeyboardModel.allCases.indices.contains(sender.tag) else { return }
+        instrument.selectKeyboard(KeyboardModel.allCases[sender.tag])
+    }
+
     @objc private func toggleRollover() { instrument.toggleRollover() }
 
     @objc private func selectTimbre(_ sender: NSMenuItem) { instrument.selectTimbre(sender.tag) }
@@ -186,7 +203,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Called for key-equivalent dispatch as well as for display, so this is
     /// also what stops ⌘E re-entering while its own save panel is open.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(selectKeyboard(_:)) {
+            let selected = KeyboardModel.allCases.firstIndex(of: instrument.keyboardModel)
+            menuItem.state = menuItem.tag == selected ? .on : .off
+            return true
+        }
         switch menuItem {
+        case switchLayoutItem:
+            // The external boards offer one mapping, so the item would be a
+            // command that visibly does nothing.
+            return instrument.keyboardModel.layouts.count > 1
         case recordAudioItem:
             menuItem.title = isAudioRecording ? "Stop Recording Audio" : "Record Audio"
             return recording.mode != .choosingLocation && !recording.isRecordingVideo

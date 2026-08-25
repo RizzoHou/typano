@@ -31,9 +31,32 @@ struct PreferencesView: View {
     /// window measures itself against.
     var content: some View {
         VStack(alignment: .leading, spacing: 20) {
+            section("Keyboard") {
+                Picker("", selection: Binding(
+                    get: { instrument.keyboardModel },
+                    set: { instrument.selectKeyboard($0) }
+                )) {
+                    ForEach(KeyboardModel.allCases) { model in
+                        Text(model.title).tag(model)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                Text(instrument.keyboardModel.detail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.35))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(keyboardNote)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.35))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             section("Levels") {
-                level("Melody", value: $settings.melodyLevel, tint: Palette.melody)
-                level("Chords", value: $settings.chordLevel, tint: Palette.chord)
+                level("Left", value: $settings.leftLevel, tint: Palette.leftHand)
+                level("Right", value: $settings.rightLevel, tint: Palette.rightHand)
 
                 HStack {
                     Text("50% is the tuned baseline, not unity.")
@@ -41,6 +64,23 @@ struct PreferencesView: View {
                         .foregroundStyle(.white.opacity(0.35))
                     Spacer()
                     Button("Reset") { settings.resetLevels() }
+                        .font(.system(size: 11))
+                        .buttonStyle(.bordered)
+                        .tint(.white)
+                }
+            }
+
+            section("Velocity") {
+                velocity("Left", hand: .left, tint: Palette.leftHand)
+                velocity("Right", hand: .right, tint: Palette.rightHand)
+
+                HStack {
+                    Text("Velocity is timbre as well as loudness — the bank has 16 layers.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Reset") { instrument.resetVelocities() }
                         .font(.system(size: 11))
                         .buttonStyle(.bordered)
                         .tint(.white)
@@ -90,7 +130,7 @@ struct PreferencesView: View {
                 if let error = instrument.remapError {
                     Text(error)
                         .font(.system(size: 10))
-                        .foregroundStyle(Palette.chord)
+                        .foregroundStyle(Palette.rightHand)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -155,6 +195,14 @@ struct PreferencesView: View {
         return "Applied with hidutil: no password, no restart, and cleared by a reboot. The mapping is system-wide and outlives the app, so quitting undoes what this run switched on — a remap set from Scripts/remap.sh beforehand is left alone."
     }
 
+    /// The keyboard is not a preference about appearance — it decides which
+    /// compromise the mapping makes, so say which one and why.
+    private var keyboardNote: String {
+        instrument.keyboardModel == .macBook
+            ? "The built-in matrix cannot report enough right-hand keys at once, so the right hand plays one key per chord. On an external board it plays notes instead."
+            : "n-key rollover, so the chord grid is unnecessary: both hands play notes, after FreePiano's default map. F5–F12 move octave and velocity per hand — only when macOS is sending real function keys."
+    }
+
     private var recordingNote: String {
         let base = "Audio records the instrument's own output, straight off the graph — no other app, no microphone, and unaffected by which output device is selected."
         return ScreenPermission.isGranted
@@ -200,6 +248,16 @@ struct PreferencesView: View {
     private func level(_ title: String, value: Binding<Double>, tint: Color) -> some View {
         labelled(title, readout: gainLabel(value.wrappedValue)) {
             Slider(value: value, in: 0...1).tint(tint)
+        }
+    }
+
+    private func velocity(_ title: String, hand: Hand, tint: Color) -> some View {
+        labelled(title, readout: "\(instrument.velocity(hand))") {
+            Slider(value: Binding(
+                get: { Double(instrument.velocity(hand)) },
+                set: { instrument.setVelocity(Int($0.rounded()), for: hand) }
+            ), in: 1...127, step: 1)
+            .tint(tint)
         }
     }
 

@@ -59,10 +59,10 @@ enum SoundCheck {
         print("graph:  \(audio.statusLabel)" + (audio.lastFailure.map { " — \($0)" } ?? ""))
 
         for level in [0.0, 0.25, 0.5, 0.75, 1.0] {
-            audio.setMelodyLevel(level)
-            audio.setChordLevel(level)
-            print(String(format: "  level %.2f  melody %+.1f dB  chords %+.1f dB",
-                         level, audio.melody.overallGain, audio.chords.overallGain))
+            audio.setLevel(level, for: .left)
+            audio.setLevel(level, for: .right)
+            print(String(format: "  level %.2f  left %+.1f dB  right %+.1f dB",
+                         level, audio.left.overallGain, audio.right.overallGain))
         }
     }
 
@@ -82,11 +82,11 @@ enum SoundCheck {
 
         // Deliberately not the defaults: a rebuild that quietly reset the
         // balance would still pass against 0.5.
-        audio.setMelodyLevel(0.75)
-        audio.setChordLevel(0.25)
+        audio.setLevel(0.75, for: .left)
+        audio.setLevel(0.25, for: .right)
         let source = audio.sourceLabel
-        let melodyGain = audio.melody.overallGain
-        let chordGain = audio.chords.overallGain
+        let leftGain = audio.left.overallGain
+        let rightGain = audio.right.overallGain
 
         var failures: [String] = []
         func expect(_ condition: Bool, _ message: String) {
@@ -109,15 +109,141 @@ enum SoundCheck {
         expect(audio.isRunning, "engine running after rebuild")
         expect(audio.lastFailure == nil, "no failure recorded (\(audio.lastFailure ?? "—"))")
         expect(audio.sourceLabel == source, "sound source survived: \(audio.sourceLabel)")
-        expect(audio.melody.overallGain == melodyGain,
-               "melody gain survived (\(audio.melody.overallGain) dB)")
-        expect(audio.chords.overallGain == chordGain,
-               "chord gain survived (\(audio.chords.overallGain) dB)")
+        expect(audio.left.overallGain == leftGain,
+               "left gain survived (\(audio.left.overallGain) dB)")
+        expect(audio.right.overallGain == rightGain,
+               "right gain survived (\(audio.right.overallGain) dB)")
         expect(routeChanges == 2,
                "held notes cleared on the change and on recovery (got \(routeChanges))")
         print("  ....  \(audio.deviceReport)")
 
         print(failures.isEmpty ? "restart: PASS" : "restart: FAIL (\(failures.count))")
+        return failures.isEmpty
+    }
+
+    /// `Typano --check-layout` — asserts the key maps rather than printing
+    /// them, because a mapping typo is silent: a wrong note still sounds, and
+    /// nothing on a Linux box can hear that it is the wrong one.
+    static func layout() -> Bool {
+        var failures: [String] = []
+        func expect(_ condition: Bool, _ message: String) {
+            print("  \(condition ? "OK   " : "FAIL ") \(message)")
+            if !condition { failures.append(message) }
+        }
+
+        func note(_ layout: Layout, _ code: UInt16) -> Int? {
+            if case .note(let midi, _)? = layout.actions[code] { return midi }
+            return nil
+        }
+
+        // MARK: geometry
+        for model in KeyboardModel.allCases {
+            let widths = model.rows.map { row in row.reduce(0) { $0 + $1.width } }
+            let uniform = widths.allSatisfy { abs($0 - model.unitsPerRow) < 0.001 }
+            expect(uniform,
+                   "\(model.title): every row is \(model.unitsPerRow)u (got \(widths))")
+            expect(!model.layouts.isEmpty, "\(model.title): has a layout")
+
+            for layout in model.layouts {
+                let both = layout.keys(.left).intersection(layout.keys(.right))
+                expect(both.isEmpty,
+                       "\(model.title)/\(layout.name): hands do not overlap")
+            }
+        }
+
+        // MARK: diatonic anchors — FreePiano's own pitches, key for key
+        let d = Layouts.diatonic
+        let anchors: [(UInt16, Int, String)] = [
+            (KC.shift, 35, "shift = B1"), (KC.z, 36, "Z = C2"),
+            (KC.f13, 47, "caps = B2"), (KC.a, 48, "A = C3"),
+            (KC.tab, 59, "tab = B3"), (KC.q, 60, "Q = C4 (middle C)"),
+            (KC.grave, 71, "` = B4"), (KC.one, 72, "1 = C5"),
+            (KC.rightShift, 53, "right shift = F3"),
+            (KC.ret, 67, "return = G4"), (KC.backslash, 81, "\\ = A5"),
+            (KC.delete, 93, "backspace = A6"),
+            (KC.keypad0, 55, "keypad 0 = G3"), (KC.keypad1, 60, "keypad 1 = C4"),
+            (KC.keypad9, 74, "keypad 9 = D5"), (KC.keypadMinus, 83, "keypad − = B5"),
+            (KC.forwardDelete, 84, "del = C6"), (KC.pageUp, 93, "pgup = A6"),
+        ]
+        for (code, midi, label) in anchors {
+            expect(note(d, code) == midi,
+                   "diatonic: \(label) (got \(note(d, code).map(String.init) ?? "nothing"))")
+        }
+        expect(d.keys(.left).count == 53, "diatonic: 53 left-hand keys (got \(d.keys(.left).count))")
+        expect(d.keys(.right).count == 23, "diatonic: 23 right-hand keys (got \(d.keys(.right).count))")
+        expect(!d.rightPlaysChords, "diatonic: right hand plays notes, not chords")
+
+        // MARK: chord grid anchors — unchanged by the diatonic work
+        let f = Layouts.fifths
+        for (code, midi, label) in [(KC.shift, 47, "shift = B2"), (KC.z, 48, "Z = C3"),
+                                    (KC.a, 60, "A = C4 (middle C)"), (KC.q, 72, "Q = C5")] {
+            expect(note(f, code) == midi,
+                   "fifths: \(label) (got \(note(f, code).map(String.init) ?? "nothing"))")
+        }
+        expect(f.keys(.right).count == 18, "fifths: 18 chord keys (got \(f.keys(.right).count))")
+        expect(f.rightPlaysChords, "fifths: right hand plays chords")
+
+        // MARK: controls survive the merge
+        //
+        // Note rows and control keys are merged into one table with the notes
+        // winning, so a row extended one key too far would silently swallow a
+        // control and the only symptom would be a control that stopped working.
+        for layout in [d, f] {
+            func isControl(_ code: UInt16, _ label: String) {
+                let ok: Bool
+                switch layout.actions[code] {
+                case .pedal, .sustainLatch, .accidental, .transpose, .octave, .velocity: ok = true
+                default: ok = false
+                }
+                expect(ok, "\(layout.name): \(label) is still a control")
+            }
+            isControl(KC.space, "space")
+            isControl(KC.escape, "esc")
+            isControl(KC.rightCommand, "right ⌘")
+            isControl(KC.f16, "F16")
+            isControl(KC.up, "↑")
+            isControl(KC.down, "↓")
+            isControl(KC.left, "←")
+            isControl(KC.right, "→")
+            for (code, label) in [(KC.f3, "F3"), (KC.f4, "F4"), (KC.f5, "F5"), (KC.f6, "F6"),
+                                  (KC.f7, "F7"), (KC.f8, "F8"), (KC.f9, "F9"), (KC.f10, "F10"),
+                                  (KC.f11, "F11"), (KC.f12, "F12")] {
+                isControl(code, label)
+            }
+        }
+
+        // MARK: the column invariant
+        //
+        // The rows are an octave apart *and share their columns*, which is what
+        // makes changing register a vertical hand shift with the same
+        // fingering. Nothing enforces it but the order of four key lists, so a
+        // key inserted into one row would silently shear the whole grid.
+        let columns: [(String, [UInt16])] = [
+            ("do",  [KC.z, KC.a, KC.q, KC.one]),
+            ("re",  [KC.x, KC.s, KC.w, KC.two]),
+            ("mi",  [KC.c, KC.d, KC.e, KC.three]),
+            ("fa",  [KC.v, KC.f, KC.r, KC.four]),
+            ("sol", [KC.b, KC.g, KC.t, KC.five]),
+            ("la",  [KC.n, KC.h, KC.y, KC.six]),
+            ("si",  [KC.m, KC.j, KC.u, KC.seven]),
+            ("lead", [KC.shift, KC.f13, KC.tab, KC.grave]),
+        ]
+        for (name, codes) in columns {
+            let notes = codes.compactMap { note(d, $0) }
+            let stacked = notes.count == 4
+                && zip(notes, notes.dropFirst()).allSatisfy { $1 - $0 == 12 }
+            expect(stacked, "diatonic: the \(name) column stacks in octaves (got \(notes))")
+        }
+
+        // The right hand is one unbroken run, so unlike the overlapping left
+        // rows it must have no repeats at all.
+        let rightNotes = d.keys(.right).compactMap { note(d, $0) }
+        expect(Set(rightNotes).count == rightNotes.count,
+               "diatonic: the right hand repeats no note")
+        expect(rightNotes.min() == 55 && rightNotes.max() == 93,
+               "diatonic: the right hand spans G3–A6 (got \(rightNotes.min() ?? -1)–\(rightNotes.max() ?? -1))")
+
+        print(failures.isEmpty ? "layout: PASS" : "layout: FAIL (\(failures.count))")
         return failures.isEmpty
     }
 
@@ -258,10 +384,10 @@ enum SoundCheck {
         // A C major arpeggio, so the file has signal rather than silence.
         var peak: Float = 0
         for note in [60, 64, 67, 72] as [UInt8] {
-            audio.melody.startNote(note, withVelocity: 100, onChannel: 0)
+            audio.left.startNote(note, withVelocity: 100, onChannel: 0)
             RunLoop.main.run(until: Date().addingTimeInterval(0.4))
             peak = max(peak, recorder.peak)
-            audio.melody.stopNote(note, onChannel: 0)
+            audio.left.stopNote(note, onChannel: 0)
         }
         RunLoop.main.run(until: Date().addingTimeInterval(0.4))
         peak = max(peak, recorder.peak)
@@ -276,10 +402,10 @@ enum SoundCheck {
 
         var peakAfter: Float = 0
         for note in [67, 72] as [UInt8] {
-            audio.melody.startNote(note, withVelocity: 100, onChannel: 0)
+            audio.left.startNote(note, withVelocity: 100, onChannel: 0)
             RunLoop.main.run(until: Date().addingTimeInterval(0.4))
             peakAfter = max(peakAfter, recorder.peak)
-            audio.melody.stopNote(note, onChannel: 0)
+            audio.left.stopNote(note, onChannel: 0)
         }
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
         peakAfter = max(peakAfter, recorder.peak)

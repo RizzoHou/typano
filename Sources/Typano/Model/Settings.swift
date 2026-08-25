@@ -6,10 +6,24 @@ import Foundation
 /// because balance is something you find by ear while playing.
 final class Settings: ObservableObject {
 
-    /// Zone levels. 0.5 is the tuned baseline, not unity — see
+    /// Per-hand levels. 0.5 is the tuned baseline, not unity — see
     /// `AudioEngine.gainDelta(for:)` for the curve.
-    @Published var melodyLevel: Double { didSet { store(melodyLevel, .melodyLevel) } }
-    @Published var chordLevel: Double  { didSet { store(chordLevel, .chordLevel) } }
+    ///
+    /// Their stored keys are still `melodyLevel` / `chordLevel`: the zones were
+    /// named for what they played before the right hand stopped being the chord
+    /// hand, and renaming the key would silently reset a balance the user tuned
+    /// by ear.
+    @Published var leftLevel: Double  { didSet { store(leftLevel, .melodyLevel) } }
+    @Published var rightLevel: Double { didSet { store(rightLevel, .chordLevel) } }
+
+    /// Which keyboard is being played. Stored raw so an unknown value degrades
+    /// to the built-in default rather than trapping.
+    @Published var keyboardModelID: String { didSet { store(keyboardModelID, .keyboardModel) } }
+
+    var keyboardModel: KeyboardModel {
+        get { KeyboardModel(rawValue: keyboardModelID) ?? .macBook }
+        set { keyboardModelID = newValue.rawValue }
+    }
 
     /// Sustain can come from three independent sources; `Instrument` ORs them.
     @Published var sustainLatchEnabled: Bool    { didSet { store(sustainLatchEnabled, .sustainLatchEnabled) } }
@@ -78,8 +92,9 @@ final class Settings: ObservableObject {
         self.defaults = defaults
         defaults.register(defaults: Key.registrationDefaults)
 
-        melodyLevel = defaults.double(forKey: Key.melodyLevel.rawValue)
-        chordLevel = defaults.double(forKey: Key.chordLevel.rawValue)
+        leftLevel = defaults.double(forKey: Key.melodyLevel.rawValue)
+        rightLevel = defaults.double(forKey: Key.chordLevel.rawValue)
+        keyboardModelID = defaults.string(forKey: Key.keyboardModel.rawValue) ?? KeyboardModel.macBook.rawValue
         sustainLatchEnabled = defaults.bool(forKey: Key.sustainLatchEnabled.rawValue)
         sustainSpaceEnabled = defaults.bool(forKey: Key.sustainSpaceEnabled.rawValue)
         trackpadSustainEnabled = defaults.bool(forKey: Key.trackpadSustainEnabled.rawValue)
@@ -95,8 +110,8 @@ final class Settings: ObservableObject {
     }
 
     func resetLevels() {
-        melodyLevel = 0.5
-        chordLevel = 0.5
+        leftLevel = 0.5
+        rightLevel = 0.5
     }
 
     private func store(_ value: Any, _ key: Key) {
@@ -106,6 +121,7 @@ final class Settings: ObservableObject {
     private enum Key: String, CaseIterable {
         case melodyLevel = "melodyLevel"
         case chordLevel = "chordLevel"
+        case keyboardModel = "keyboardModel"
         case sustainLatchEnabled = "sustainLatchEnabled"
         case sustainSpaceEnabled = "sustainSpaceEnabled"
         case trackpadSustainEnabled = "trackpadSustainEnabled"
@@ -123,6 +139,7 @@ final class Settings: ObservableObject {
         static let registrationDefaults: [String: Any] = [
             Key.melodyLevel.rawValue: 0.5,
             Key.chordLevel.rawValue: 0.5,
+            Key.keyboardModel.rawValue: KeyboardModel.macBook.rawValue,
             Key.sustainLatchEnabled.rawValue: true,
             Key.sustainSpaceEnabled.rawValue: true,
             Key.trackpadSustainEnabled.rawValue: true,

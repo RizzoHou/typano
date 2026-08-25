@@ -5,7 +5,7 @@ import AVFoundation
 final class Performer {
     private let audio: AudioEngine
 
-    private var soundingNotes: [UInt16: Int] = [:]
+    private var soundingNotes: [UInt16: (note: Int, hand: Hand)] = [:]
     private var chordNotes: [Int] = []
     private var chordOwner: UInt16?
     private var previousVoicing: [Int]?
@@ -13,27 +13,38 @@ final class Performer {
     private var chordGeneration = 0
 
     /// Velocity is also timbre: the Salamander bank has 16 velocity layers, so
-    /// pushing the melody up two layers makes it brighter as well as louder —
-    /// which is what "the left side sounds small" actually means. Gain alone
-    /// would make it loud and still dull.
-    private let melodyVelocity = 100
-    private let chordVelocity = 70
-    private let bassVelocity = 82
+    /// pushing a hand up two layers makes it brighter as well as louder — which
+    /// is what "that side sounds small" actually means. Gain alone would make
+    /// it loud and still dull.
+    ///
+    /// Set from the layout and moved live from the function row, so it is a
+    /// performance parameter rather than a constant.
+    var velocity: [Hand: Int] = [.left: 100, .right: 70]
+
+    /// The bass note of a chord carries it, so it sits above the upper voices —
+    /// the same offset the tuned constants used to encode.
+    private static let bassBoost = 12
 
     init(audio: AudioEngine) { self.audio = audio }
 
-    // MARK: - Melody
+    private func sampler(_ hand: Hand) -> AVAudioUnitSampler {
+        hand == .left ? audio.left : audio.right
+    }
 
-    func noteOn(key: UInt16, midi: Int) {
+    private func level(_ hand: Hand) -> Int { velocity[hand] ?? 100 }
+
+    // MARK: - Notes
+
+    func noteOn(key: UInt16, midi: Int, hand: Hand) {
         noteOff(key: key)   // defensive: a dropped key-up must not strand a note
         let note = UInt8(clamping: midi)
-        audio.melody.startNote(note, withVelocity: humanised(melodyVelocity), onChannel: 0)
-        soundingNotes[key] = Int(note)
+        sampler(hand).startNote(note, withVelocity: humanised(level(hand)), onChannel: 0)
+        soundingNotes[key] = (Int(note), hand)
     }
 
     func noteOff(key: UInt16) {
-        guard let midi = soundingNotes.removeValue(forKey: key) else { return }
-        audio.melody.stopNote(UInt8(midi), onChannel: 0)
+        guard let sounding = soundingNotes.removeValue(forKey: key) else { return }
+        sampler(sounding.hand).stopNote(UInt8(sounding.note), onChannel: 0)
     }
 
     // MARK: - Chords
@@ -51,17 +62,18 @@ final class Performer {
         // Bass lands immediately so the chord feels instant; the upper voices
         // follow a few milliseconds apart. A perfectly simultaneous attack is
         // the clearest tell that no hand was involved.
-        audio.chords.startNote(UInt8(clamping: voicing.bass),
-                               withVelocity: humanised(bassVelocity), onChannel: 0)
+        audio.right.startNote(UInt8(clamping: voicing.bass),
+                              withVelocity: humanised(level(.right) + Self.bassBoost),
+                              onChannel: 0)
 
         var delay = 0.0
         for note in voicing.upper {
             delay += Double.random(in: 0.006...0.012)
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self, self.chordGeneration == generation else { return }
-                self.audio.chords.startNote(UInt8(clamping: note),
-                                            withVelocity: self.humanised(self.chordVelocity),
-                                            onChannel: 0)
+                self.audio.right.startNote(UInt8(clamping: note),
+                                           withVelocity: self.humanised(self.level(.right)),
+                                           onChannel: 0)
             }
         }
     }
@@ -76,7 +88,7 @@ final class Performer {
 
     private func stopChordNotes() {
         for note in chordNotes {
-            audio.chords.stopNote(UInt8(clamping: note), onChannel: 0)
+            audio.right.stopNote(UInt8(clamping: note), onChannel: 0)
         }
         chordNotes = []
     }
@@ -85,8 +97,8 @@ final class Performer {
 
     func setPedal(_ down: Bool) {
         let value: UInt8 = down ? 127 : 0
-        audio.melody.sendController(64, withValue: value, onChannel: 0)
-        audio.chords.sendController(64, withValue: value, onChannel: 0)
+        audio.left.sendController(64, withValue: value, onChannel: 0)
+        audio.right.sendController(64, withValue: value, onChannel: 0)
     }
 
     // MARK: - Panic
@@ -101,7 +113,7 @@ final class Performer {
         stopChordNotes()
         chordOwner = nil
         previousVoicing = nil
-        for sampler in [audio.melody, audio.chords] {
+        for sampler in [audio.left, audio.right] {
             sampler.sendController(64, withValue: 0, onChannel: 0)    // pedal up
             sampler.sendController(123, withValue: 0, onChannel: 0)   // all notes off
         }

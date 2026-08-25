@@ -2,11 +2,11 @@ import AVFoundation
 import CoreAudio
 import os
 
-/// melody ─┐
+/// left  ──┐
 ///          ├─ submix ─ reverb ─ limiter ─ main out
-/// chords ─┘
+/// right ──┘
 ///
-/// Two samplers rather than one so melody and chords can be placed and
+/// Two samplers rather than one so the two hands can be placed and
 /// balanced independently — the MacBook's stereo image is one of the few
 /// genuine advantages this instrument has over a real piano.
 ///
@@ -29,19 +29,22 @@ final class AudioEngine {
             componentFlags: 0,
             componentFlagsMask: 0))
 
-    let melody = AVAudioUnitSampler()
-    let chords = AVAudioUnitSampler()
+    let left = AVAudioUnitSampler()
+    let right = AVAudioUnitSampler()
 
-    /// Baseline gain per zone, in dB, at level 0.5.
+    /// Baseline gain per hand, in dB, at level 0.5.
     ///
-    /// Melody sits above chords because a chord fires four notes at once and
-    /// sums roughly 12 dB louder than a single note at the same velocity — the
-    /// left zone reads as quiet even when it is nominally the same level.
-    private static let melodyBaselineGain: Float = 3
+    /// A chord fires four notes at once and sums roughly 12 dB louder than a
+    /// single note at the same velocity, so a hand playing chords needs to sit
+    /// lower to read as the same loudness. Which baseline the right hand takes
+    /// therefore depends on the layout, not on the hand — on an external
+    /// keyboard it plays single notes like the left one.
+    private static let noteBaselineGain: Float = 3
     private static let chordBaselineGain: Float = -1
 
-    private var melodyLevel = 0.5
-    private var chordLevel = 0.5
+    private var leftLevel = 0.5
+    private var rightLevel = 0.5
+    private var rightBaselineGain = AudioEngine.chordBaselineGain
 
     /// Human-readable name of whichever candidate actually loaded.
     private(set) var sourceLabel = "—"
@@ -100,16 +103,16 @@ final class AudioEngine {
     /// *which* output device is playing is in `bringUp()`, which the route
     /// change re-runs verbatim.
     func start() {
-        for node in [melody, chords, submix, reverb, limiter] as [AVAudioNode] {
+        for node in [left, right, submix, reverb, limiter] as [AVAudioNode] {
             engine.attach(node)
         }
 
         reverb.loadFactoryPreset(.mediumHall)
         reverb.wetDryMix = 18
 
-        // A gentle spread: melody just left of centre, chords just right.
-        melody.stereoPan = -15
-        chords.stereoPan = 15
+        // A gentle spread, following the hands: left of centre, right of it.
+        left.stereoPan = -15
+        right.stereoPan = 15
 
         observeRouteChanges()
         bringUp(reason: "launch")
@@ -143,8 +146,8 @@ final class AudioEngine {
         // Rebuilt with an explicit format, never `nil`: `nil` means "keep the
         // source node's current output format", which is precisely the old
         // device's format we are trying to move off.
-        engine.connect(melody, to: submix, format: format)
-        engine.connect(chords, to: submix, format: format)
+        engine.connect(left, to: submix, format: format)
+        engine.connect(right, to: submix, format: format)
         engine.connect(submix, to: reverb, format: format)
         engine.connect(reverb, to: limiter, format: format)
         engine.connect(limiter, to: engine.mainMixerNode, format: format)
@@ -308,13 +311,18 @@ final class AudioEngine {
         return Float((level - 0.5) * (level >= 0.5 ? 12 : 80))
     }
 
-    func setMelodyLevel(_ level: Double) {
-        melodyLevel = level
+    func setLevel(_ level: Double, for hand: Hand) {
+        switch hand {
+        case .left:  leftLevel = level
+        case .right: rightLevel = level
+        }
         applyLevels()
     }
 
-    func setChordLevel(_ level: Double) {
-        chordLevel = level
+    /// Follows the active layout: a right hand playing single notes wants the
+    /// note baseline, one playing chords wants the lower chord baseline.
+    func setRightPlaysChords(_ chords: Bool) {
+        rightBaselineGain = chords ? Self.chordBaselineGain : Self.noteBaselineGain
         applyLevels()
     }
 
@@ -322,8 +330,8 @@ final class AudioEngine {
     /// sampler's gain, so a ⌘1–⌘4 timbre switch would otherwise silently drop
     /// the user's balance back to the default.
     private func applyLevels() {
-        melody.overallGain = Self.gain(baseline: Self.melodyBaselineGain, level: melodyLevel)
-        chords.overallGain = Self.gain(baseline: Self.chordBaselineGain, level: chordLevel)
+        left.overallGain = Self.gain(baseline: Self.noteBaselineGain, level: leftLevel)
+        right.overallGain = Self.gain(baseline: rightBaselineGain, level: rightLevel)
     }
 
     private static func gain(baseline: Float, level: Double) -> Float {
@@ -336,8 +344,8 @@ final class AudioEngine {
         let candidates = SoundLibrary.timbres[index]
         for candidate in candidates {
             do {
-                try candidate.apply(melody)
-                try candidate.apply(chords)
+                try candidate.apply(left)
+                try candidate.apply(right)
                 sourceLabel = candidate.label
                 applyLevels()
                 return sourceLabel

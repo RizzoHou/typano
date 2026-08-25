@@ -10,11 +10,11 @@ struct RolloverStats {
     var maxLeft = 0
     var maxRight = 0
 
-    mutating func record(_ held: Set<UInt16>) {
+    mutating func record(_ held: Set<UInt16>, layout: Layout) {
         current = held.count
         maxOverall = max(maxOverall, held.count)
-        maxLeft = max(maxLeft, held.intersection(Layouts.melodyKeys).count)
-        maxRight = max(maxRight, held.intersection(Layouts.chordKeys).count)
+        maxLeft = max(maxLeft, held.intersection(layout.keys(.left)).count)
+        maxRight = max(maxRight, held.intersection(layout.keys(.right)).count)
     }
 
     mutating func reset() { self = RolloverStats() }
@@ -28,7 +28,11 @@ final class Instrument: ObservableObject {
 
     @Published private(set) var held: Set<UInt16> = []
     @Published private(set) var transpose = 0
-    @Published private(set) var octaveShift = 0
+    /// Octave shift and velocity are per hand, following FreePiano's two
+    /// channels — a hand playing accompaniment wants to sit under the one
+    /// playing the tune, and which hand that is depends on the layout.
+    @Published private(set) var octaveShift: [Hand: Int] = [.left: 0, .right: 0]
+    @Published private(set) var handVelocity: [Hand: Int] = [:]
     @Published private(set) var accidental = 0
     @Published private(set) var pedalDown = false
     /// Which of the three sustain sources are holding the pedal, for the HUD.
@@ -36,6 +40,7 @@ final class Instrument: ObservableObject {
     @Published private(set) var sustainLatched = false
     @Published private(set) var trackpadContacts: [CGPoint] = []
     @Published private(set) var layoutIndex = 0
+    @Published private(set) var keyboardModel: KeyboardModel = .macBook
     @Published private(set) var timbreIndex = 0
     @Published private(set) var soundSource = "loading…"
     /// What `hidutil` actually reports, re-read whenever the app becomes
@@ -87,14 +92,32 @@ final class Instrument: ObservableObject {
         self.settings = settings
     }
 
-    var layout: Layout { Layouts.all[layoutIndex] }
+    var layout: Layout {
+        let available = keyboardModel.layouts
+        return available[min(layoutIndex, available.count - 1)]
+    }
+
+    func octave(_ hand: Hand) -> Int { octaveShift[hand] ?? 0 }
+    func velocity(_ hand: Hand) -> Int { handVelocity[hand] ?? layout.defaultVelocity(hand) }
+
+    /// How far the function row moves velocity per press. FreePiano steps by 1,
+    /// which is 20 presses to cross a velocity layer; key repeat is filtered
+    /// here, so the step has to be worth one press.
+    static let velocityStep = 5
 
     /// Tonic of the current key, e.g. "D major" after transposing up two.
     var keyName: String { Pitch.rootName(pitchClass: transpose) + " major" }
 
     var transposeLabel: String { transpose == 0 ? "0" : (transpose > 0 ? "+\(transpose)" : "\(transpose)") }
 
-    var octaveLabel: String { octaveShift == 0 ? "0" : (octaveShift > 0 ? "+\(octaveShift)" : "\(octaveShift)") }
+    func octaveLabel(_ hand: Hand) -> String {
+        let value = octave(hand)
+        return value == 0 ? "0" : (value > 0 ? "+\(value)" : "\(value)")
+    }
+
+    /// Both hands in one readout, which is what the header has room for.
+    var octaveLabel: String { "L\(octaveLabel(.left)) R\(octaveLabel(.right))" }
+    var velocityLabel: String { "L\(velocity(.left)) R\(velocity(.right))" }
 
     func start() {
         // Wired before `start()` so a launch-time failure publishes through the
@@ -210,11 +233,16 @@ final class Instrument: ObservableObject {
     private func observeSettings() {
         // `@Published` replays the current value on subscribe, so this is also
         // the initial apply.
-        settings.$melodyLevel
-            .sink { [weak self] in self?.audio.setMelodyLevel($0) }
+        settings.$leftLevel
+            .sink { [weak self] in self?.audio.setLevel($0, for: .left) }
             .store(in: &cancellables)
-        settings.$chordLevel
-            .sink { [weak self] in self?.audio.setChordLevel($0) }
+        settings.$rightLevel
+            .sink { [weak self] in self?.audio.setLevel($0, for: .right) }
+            .store(in: &cancellables)
+        settings.$keyboardModelID
+            .sink { [weak self] raw in
+                self?.applyKeyboardModel(KeyboardModel(rawValue: raw) ?? .macBook)
+            }
             .store(in: &cancellables)
 
         settings.$sustainLatchEnabled
@@ -333,13 +361,13 @@ final class Instrument: ObservableObject {
         // one way, and never back.
         guard !held.contains(code) else { return }
         held.insert(code)
-        stats.record(held)
+        stats.record(held, layout: layout)
         refreshAccidental()
 
         guard let action = layout.actions[code] else { return }
         switch action {
-        case .note(let base):
-            performer.noteOn(key: code, midi: base + pitchOffset)
+        case .note(let base, let hand):
+            performer.noteOn(key: code, midi: base + pitchOffset(hand), hand: hand)
         case .chord(let spec):
             performer.playChord(spec, key: code, transpose: transpose + accidental)
         case .pedal:
@@ -353,8 +381,10 @@ final class Instrument: ObservableObject {
             if code != KC.rightCommand { toggleLatch() }
         case .transpose(let delta):
             transpose = max(-12, min(12, transpose + delta))
-        case .octave(let delta):
-            octaveShift = max(-2, min(2, octaveShift + delta))
+        case .octave(let delta, let hand):
+            octaveShift[hand] = max(-2, min(2, octave(hand) + delta))
+        case .velocity(let delta, let hand):
+            setVelocity(velocity(hand) + delta * Self.velocityStep, for: hand)
         case .accidental:
             break   // handled by refreshAccidental
         }
@@ -387,8 +417,15 @@ final class Instrument: ObservableObject {
         else { accidental = 0 }
     }
 
-    /// Semitones added to every melody note as currently configured.
-    private var pitchOffset: Int { transpose + 12 * octaveShift + accidental }
+    /// Semitones added to that hand's notes as currently configured.
+    private func pitchOffset(_ hand: Hand) -> Int {
+        transpose + 12 * octave(hand) + accidental
+    }
+
+    func setVelocity(_ value: Int, for hand: Hand) {
+        handVelocity[hand] = max(1, min(127, value))
+        performer.velocity = [.left: velocity(.left), .right: velocity(.right)]
+    }
 
     // MARK: - Sustain
 
@@ -457,10 +494,47 @@ final class Instrument: ObservableObject {
         pedalDown = false
     }
 
+    /// Cycles the mappings this keyboard offers. The external boards offer
+    /// one, so this is a no-op there rather than a hidden second state.
     func switchLayout() {
+        let count = keyboardModel.layouts.count
+        guard count > 1 else { return }
         panic()
-        layoutIndex = (layoutIndex + 1) % Layouts.all.count
+        layoutIndex = (layoutIndex + 1) % count
+        adoptLayout()
+        // Deliberately not re-adopting velocities: both mappings on a keyboard
+        // share a balance, so resetting here would silently discard whatever
+        // the user had dialled in with F9–F12.
     }
+
+    func selectKeyboard(_ model: KeyboardModel) {
+        settings.keyboardModel = model
+    }
+
+    private func applyKeyboardModel(_ model: KeyboardModel) {
+        guard model != keyboardModel || handVelocity.isEmpty else { return }
+        panic()
+        keyboardModel = model
+        layoutIndex = 0
+        adoptLayout()
+        adoptVelocities()
+    }
+
+    /// Whether the right channel is stacking chords decides its baseline gain,
+    /// since four notes at once sum far louder than one.
+    private func adoptLayout() {
+        audio.setRightPlaysChords(layout.rightPlaysChords)
+    }
+
+    /// The layout's own two-hand balance. Which hand carries the tune flips
+    /// between the two families, so this cannot be one global constant.
+    private func adoptVelocities() {
+        handVelocity = [.left: layout.defaultVelocity(.left),
+                        .right: layout.defaultVelocity(.right)]
+        performer.velocity = handVelocity
+    }
+
+    func resetVelocities() { adoptVelocities() }
 
     func selectTimbre(_ index: Int) {
         guard SoundLibrary.timbres.indices.contains(index) else { return }
@@ -472,7 +546,7 @@ final class Instrument: ObservableObject {
 
     func resetTranspose() {
         transpose = 0
-        octaveShift = 0
+        octaveShift = [.left: 0, .right: 0]
     }
 
     func resetStats() { stats.reset() }
@@ -496,8 +570,8 @@ final class Instrument: ObservableObject {
     func caption(for code: UInt16) -> Caption? {
         guard let action = layout.actions[code] else { return nil }
         switch action {
-        case .note(let base):
-            return Caption(primary: Pitch.noteName(midi: base + transpose + 12 * octaveShift),
+        case .note(let base, let hand):
+            return Caption(primary: Pitch.noteName(midi: base + transpose + 12 * octave(hand)),
                            secondary: nil)
         case .chord(let spec):
             return Caption(primary: spec.symbol(transpose: transpose), secondary: spec.degree)
@@ -509,8 +583,10 @@ final class Instrument: ObservableObject {
             return Caption(primary: delta > 0 ? "♯" : "♭", secondary: "hold")
         case .transpose(let delta):
             return Caption(primary: delta > 0 ? "key ♯" : "key ♭", secondary: "transpose")
-        case .octave(let delta):
-            return Caption(primary: delta > 0 ? "8va" : "8vb", secondary: "octave")
+        case .octave(let delta, let hand):
+            return Caption(primary: delta > 0 ? "8va" : "8vb", secondary: "\(hand.short) octave")
+        case .velocity(let delta, let hand):
+            return Caption(primary: delta > 0 ? "vel +" : "vel −", secondary: "\(hand.short) velocity")
         }
     }
 }

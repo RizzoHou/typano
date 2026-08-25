@@ -36,7 +36,7 @@ struct TrackpadMeterView: View {
 
                 ForEach(Array(instrument.trackpadContacts.enumerated()), id: \.offset) { _, point in
                     Circle()
-                        .fill(Palette.melody)
+                        .fill(Palette.leftHand)
                         .frame(width: 11, height: 11)
                         // normalizedPosition has its origin at the lower left.
                         .offset(x: point.x * size.width - 5.5,

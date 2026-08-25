@@ -20,8 +20,8 @@ struct RolloverTesterView: View {
             HStack(spacing: 26) {
                 counter("HELD NOW", instrument.stats.current, Palette.control)
                 counter("MAX TOTAL", instrument.stats.maxOverall, .white)
-                counter("MAX LEFT", instrument.stats.maxLeft, Palette.melody)
-                counter("MAX RIGHT", instrument.stats.maxRight, Palette.chord)
+                counter("MAX LEFT", instrument.stats.maxLeft, Palette.leftHand)
+                counter("MAX RIGHT", instrument.stats.maxRight, Palette.rightHand)
             }
 
             Button("Reset counters") { instrument.resetStats() }

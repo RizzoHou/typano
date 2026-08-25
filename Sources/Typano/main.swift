@@ -17,6 +17,10 @@ if CommandLine.arguments.contains("--check-remap") {
     exit(ok ? 0 : 1)
 }
 
+if CommandLine.arguments.contains("--check-layout") {
+    exit(SoundCheck.layout() ? 0 : 1)
+}
+
 if CommandLine.arguments.contains("--check-restart") {
     exit(SoundCheck.restart() ? 0 : 1)
 }

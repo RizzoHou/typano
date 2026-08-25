@@ -2,15 +2,15 @@ import SwiftUI
 
 enum Palette {
     static let background = Color(red: 0.043, green: 0.051, blue: 0.063)
-    static let melody = Color(red: 0.33, green: 0.73, blue: 1.00)
-    static let chord = Color(red: 1.00, green: 0.69, blue: 0.31)
+    static let leftHand = Color(red: 0.33, green: 0.73, blue: 1.00)
+    static let rightHand = Color(red: 1.00, green: 0.69, blue: 0.31)
     static let control = Color(red: 0.72, green: 0.56, blue: 1.00)
     static let idle = Color.white.opacity(0.10)
 
     static func tint(_ role: KeyRole) -> Color {
         switch role {
-        case .melody:     return melody
-        case .chord:      return chord
+        case .leftHand:   return leftHand
+        case .rightHand:  return rightHand
         case .control:    return control
         case .unassigned: return idle
         }
