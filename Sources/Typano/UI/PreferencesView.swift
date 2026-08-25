@@ -200,7 +200,7 @@ struct PreferencesView: View {
     private var keyboardNote: String {
         instrument.keyboardModel == .macBook
             ? "The built-in matrix cannot report enough right-hand keys at once, so the right hand plays one key per chord. On an external board it plays notes instead."
-            : "n-key rollover, so the chord grid is unnecessary: both hands play notes, after FreePiano's default map. F5–F12 move octave and velocity per hand — only when macOS is sending real function keys."
+            : "n-key rollover, so the chord grid is unnecessary: both hands play notes, after FreePiano's default map. The arrows and the keypad are the right hand's three octaves, C3–B5. F3–F12 move key, octave and velocity — only when macOS is sending real function keys."
     }
 
     private var recordingNote: String {

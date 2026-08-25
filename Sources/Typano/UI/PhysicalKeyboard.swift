@@ -90,42 +90,54 @@ enum PhysicalKeyboard {
         k(KC.f9, "F9"), k(KC.f10, "F10"), k(KC.f11, "F11"), k(KC.f12, "F12"),
     ]
 
-    /// 98 layout (the Cherry G80-1800 lineage): full keypad, the editing keys
-    /// squeezed into a single column, and the arrows tucked under a shortened
-    /// right Shift. Which editing keys land in that column is the one thing
-    /// vendors do not agree on.
+    /// A PC board attached to a Mac reports its bottom row through the Mac
+    /// mode every one of them ships: Alt sends ⌘, Win sends ⌥, Ctrl stays ⌃.
+    /// Both legends are drawn, because the cap under the finger says the other
+    /// one — and the right ⌘ that carries the sustain latch is the Alt key
+    /// right of the space bar, in the same place on both boards.
+    private static let leftModifiers: [PhysicalKey] = [
+        k(KC.control, "⌃ ctrl", 1.25), k(KC.option, "⌥ win", 1.25),
+        k(KC.command, "⌘ alt", 1.25), k(KC.space, "space", 6.25),
+    ]
+
+    /// 98 layout (the Cherry G80-1800 lineage): full keypad, arrows tucked
+    /// under a shortened right Shift.
     ///
-    /// 15u main + 0.25 + 1u editing column + 0.25 + 4u keypad = 20.5u.
+    /// The editing keys a 98 squeezes in around the keypad are deliberately
+    /// not drawn. Vendors put a different set in a different place on every
+    /// board, none of them carries a note, and a guessed key is worse than an
+    /// absent one — it invites the user to press something that does nothing.
+    ///
+    /// 15u main + 0.25 + 4u keypad = 19.25u.
     static let compact98: [[PhysicalKey]] = [
-        functionRow + [.gap(2), .gap(0.25), k(KC.forwardDelete, "del"), .gap(0.25), .gap(4)],
-        numberRow + [.gap(0.25), k(KC.pageUp, "pgup"), .gap(0.25),
+        functionRow + [.gap(6.25)],
+        numberRow + [.gap(0.25),
                      k(KC.keypadClear, "num"), k(KC.keypadDivide, "/"),
                      k(KC.keypadMultiply, "*"), k(KC.keypadMinus, "-")],
-        topRow + [.gap(0.25), k(KC.pageDown, "pgdn"), .gap(0.25),
+        topRow + [.gap(0.25),
                   k(KC.keypad7, "7"), k(KC.keypad8, "8"), k(KC.keypad9, "9"),
                   k(KC.keypadPlus, "+")],
-        homeRow + [.gap(0.25), k(KC.home, "home"), .gap(0.25),
+        homeRow + [.gap(0.25),
                    k(KC.keypad4, "4"), k(KC.keypad5, "5"), k(KC.keypad6, "6"), .gap(1)],
         [k(KC.shift, "shift", 2.25)] + bottomLetters
             + [k(KC.rightShift, "shift", 1.75), k(KC.up, "↑")]
-            + [.gap(0.25), k(KC.end, "end"), .gap(0.25),
+            + [.gap(0.25),
                k(KC.keypad1, "1"), k(KC.keypad2, "2"), k(KC.keypad3, "3"),
                k(KC.keypadEnter, "enter")],
-        // No right ⌘ on this bottom row, which is why the sustain latch also
-        // answers to Esc — a right Ctrl arrives as its own code, not as ⌘.
-        [
-            k(KC.control, "ctrl", 1.25), k(KC.command, "win", 1.25), k(KC.option, "alt", 1.25),
-            k(KC.space, "space", 6.25),
-            k(KC.rightOption, "alt"), k(nil, "fn"),
+        leftModifiers + [
+            k(KC.rightCommand, "⌘ alt"), k(nil, "fn"),
             k(KC.left, "←"), k(KC.down, "↓"), k(KC.right, "→"),
-        ] + [.gap(0.25), .gap(1), .gap(0.25),
-             k(KC.keypad0, "0", 2), k(KC.keypadDecimal, "."), .gap(1)],
+        ] + [.gap(0.25), k(KC.keypad0, "0", 2), k(KC.keypadDecimal, "."), .gap(1)],
     ]
 
     /// ANSI full size — the 104/108 boards sold everywhere in China, with a
     /// short left Shift and the backslash above Return. Its 105-key ISO cousin
     /// moves that key next to a tall Return and adds one beside left Shift;
     /// this build does not draw that variant.
+    ///
+    /// The editing cluster is drawn because on this board it is unambiguous,
+    /// but nothing is mapped to it: the right hand stops at the keypad so that
+    /// the same three octaves are reachable on the 98.
     ///
     /// 15u main + 0.25 + 3u editing + 0.25 + 4u keypad = 22.5u.
     static let fullSize: [[PhysicalKey]] = [
@@ -148,11 +160,9 @@ enum PhysicalKeyboard {
             + [.gap(0.25), .gap(1), k(KC.up, "↑"), .gap(1), .gap(0.25),
                k(KC.keypad1, "1"), k(KC.keypad2, "2"), k(KC.keypad3, "3"),
                k(KC.keypadEnter, "enter")],
-        [
-            k(KC.control, "ctrl", 1.25), k(KC.command, "win", 1.25), k(KC.option, "alt", 1.25),
-            k(KC.space, "space", 6.25),
-            k(KC.rightOption, "alt", 1.25), k(KC.rightCommand, "win", 1.25),
-            k(nil, "menu", 1.25), k(nil, "ctrl", 1.25),
+        leftModifiers + [
+            k(KC.rightCommand, "⌘ alt", 1.25), k(KC.rightOption, "⌥ win", 1.25),
+            k(nil, "menu", 1.25), k(KC.rightControl, "⌃ ctrl", 1.25),
         ] + [.gap(0.25), k(KC.left, "←"), k(KC.down, "↓"), k(KC.right, "→"), .gap(0.25),
              k(KC.keypad0, "0", 2), k(KC.keypadDecimal, "."), .gap(1)],
     ]

@@ -12,9 +12,9 @@ import Foundation
 ///
 /// **Diatonic** (external 98 / full-size keyboards, after FreePiano). Every row
 /// of the main block is one continuous major scale, rows an octave apart and
-/// column-aligned; the numeric keypad and editing cluster carry the right hand.
-/// An external board is n-key rollover, so the chord grid has nothing left to
-/// work around and the right hand plays real notes.
+/// column-aligned; the arrow cluster and the numeric keypad carry the right
+/// hand. An external board is n-key rollover, so the chord grid has nothing
+/// left to work around and the right hand plays real notes.
 enum Layouts {
 
     // MARK: - Scale
@@ -49,28 +49,25 @@ enum Layouts {
         parts.reduce(into: [:]) { $0.merge($1) { a, _ in a } }
     }
 
-    // MARK: - Controls, shared by every layout
+    // MARK: - Controls
 
-    private static var controlActions: [UInt16: KeyAction] {
+    /// What every layout has. The function row keeps FreePiano's own
+    /// positions, so its habits transfer: F3/F4 key signature, F5–F8 octave
+    /// per hand, F9–F12 velocity per hand. F1/F2 are its keyboard-group
+    /// switch — a whole spare set of bindings stored inside one map file —
+    /// which we have no use for, because here the mapping follows the keyboard
+    /// rather than a key.
+    private static var sharedControls: [UInt16: KeyAction] {
         [
             KC.space:        .pedal,
+            // Right ⌘ is the latch on all three keyboards: a PC board in Mac
+            // mode sends it from the Alt key right of the space bar, so the
+            // habit built on the built-in keyboard carries over untouched.
             KC.rightCommand: .sustainLatch,
-            // An external board may have no right ⌘ at all — a 98 usually ends
-            // its bottom row Alt / Fn / Ctrl — so the latch needs a key that
-            // exists on every keyboard. Esc is unbound either way, and it is
-            // what FreePiano's own users bind sustain to.
-            KC.escape:       .sustainLatch,
             // Same key after the right-⌘ remap, which strips it of its
             // modifier meaning at the HID level.
             KC.f16:          .sustainLatch,
-            KC.up:           .accidental(1),
-            KC.down:         .accidental(-1),
-            KC.left:         .transpose(-1),
-            KC.right:        .transpose(1),
 
-            // FreePiano's function row, kept in its positions so its habits
-            // transfer. F1/F2 are its keyboard-group switch, which we have no
-            // use for — the layout follows the keyboard here, not a key.
             KC.f3:  .transpose(1),
             KC.f4:  .transpose(-1),
             KC.f5:  .octave(1, .left),
@@ -82,6 +79,22 @@ enum Layouts {
             KC.f11: .velocity(1, .right),
             KC.f12: .velocity(-1, .right),
         ]
+    }
+
+    /// The chord layouts spend the arrows on pitch as well, because the
+    /// built-in keyboard draws no function row and F3–F12 arrive as media
+    /// keys unless the user has switched that off — without the arrows there
+    /// would be no way to change key at all.
+    ///
+    /// On the diatonic layout the arrows are FreePiano's four lowest
+    /// right-hand notes, and the function row does this job instead.
+    private static var chordControls: [UInt16: KeyAction] {
+        sharedControls.merging([
+            KC.up:    .accidental(1),
+            KC.down:  .accidental(-1),
+            KC.left:  .transpose(-1),
+            KC.right: .transpose(1),
+        ]) { a, _ in a }
     }
 
     // MARK: - Chord grid (built-in MacBook keyboard)
@@ -133,7 +146,7 @@ enum Layouts {
         rightRule: "→ up a fifth · top row +7th · bottom row major↔minor",
         actions: merge([
             macBookMelody,
-            controlActions,
+            chordControls,
             grid(
                 top: [
                     ChordSpec(root: F, quality: .major7,          degree: "IVmaj7"),
@@ -173,7 +186,7 @@ enum Layouts {
         rightRule: "home row I V vi IV ii iii · top row +7th · bottom row major↔minor",
         actions: merge([
             macBookMelody,
-            controlActions,
+            chordControls,
             grid(
                 top: [
                     ChordSpec(root: C, quality: .major7,          degree: "Imaj7"),
@@ -226,22 +239,29 @@ enum Layouts {
                                    KC.equal, KC.delete], base: 72),
     ]
 
-    /// The right hand, in ascending order: keypad first, then the editing
-    /// cluster above it. Written as one run because the keypad's own geometry
-    /// is a reading order, not a musical one — 1·2·3 left to right, bottom row
-    /// up. A keyboard missing some of these simply never sends them; nothing
-    /// here has to know which board is attached.
+    /// The right hand: the arrow cluster, then the keypad, ascending. Exactly
+    /// 21 keys, which is exactly three octaves — C3 to B5 — and exactly what
+    /// FreePiano's own map puts there, in the same order.
+    ///
+    /// FreePiano runs on for six more keys (Ins/Home/PgUp/Del/End/PgDn = C6–A6)
+    /// on a full-size board. Those are left out here: a 98 arranges that
+    /// cluster differently from vendor to vendor and often not at all, and one
+    /// mapping that plays the same on both boards is worth more than six notes
+    /// at the very top of the register.
+    ///
+    /// Written as one run because the keypad's geometry is a reading order,
+    /// not a musical one — 1·2·3 left to right, bottom row up.
     private static let rightRun: [UInt16] = [
+        KC.left, KC.down, KC.right, KC.up,
         KC.keypad0, KC.keypadDecimal, KC.keypadEnter,
         KC.keypad1, KC.keypad2, KC.keypad3, KC.keypad4, KC.keypad5,
         KC.keypad6, KC.keypad7, KC.keypad8, KC.keypad9,
         KC.keypadPlus, KC.keypadClear, KC.keypadDivide, KC.keypadMultiply, KC.keypadMinus,
-        KC.forwardDelete, KC.end, KC.pageDown, KC.help, KC.home, KC.pageUp,
     ]
 
-    /// `rightRun` starts on G3 — the fourth degree above C3 — so that keypad 1
-    /// lands on middle C.
-    private static let rightFirstDegree = 4
+    /// The run starts on C3, which puts keypad 1 on middle C — so the keypad
+    /// digits read as 简谱 for the middle octave, 1 through 7.
+    private static let rightFirstDegree = 0
     private static let rightBase = 48
 
     private static var rightHand: [UInt16: KeyAction] {
@@ -255,13 +275,13 @@ enum Layouts {
     static let diatonic = Layout(
         name: "Diatonic",
         leftRule: "left hand — one scale per row, rows an octave apart",
-        rightRule: "right hand — keypad and editing cluster, ascending",
+        rightRule: "right hand — arrows then keypad, three octaves ascending",
         // FreePiano's own balance: the accompaniment hand sits under the
         // melody hand, and here the melody hand is the right one.
         actions: merge([
             merge(diatonicRows.map { $0.actions(.left) }),
             rightHand,
-            controlActions,
+            sharedControls,
         ]),
         startVelocity: [.left: 80, .right: 100]
     )

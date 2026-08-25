@@ -140,15 +140,24 @@ struct ContentView: View {
             Spacer(minLength: 8)
 
             VStack(alignment: .trailing, spacing: 3) {
-                Text("sustain: trackpad rest · right ⌘ or esc latch · space hold")
+                Text("sustain: trackpad rest · right ⌘ latch · space hold")
                     .foregroundStyle(.white.opacity(0.45))
                 Text(functionRowLine)
                     .foregroundStyle(.white.opacity(0.45))
-                Text("↑↓ hold ♯♭ · ←→ transpose · ⌘L layout · ⌘R rollover · ⌘1–4 timbre · ⌘E record · ⌥⌘E video · ⌘, preferences")
+                Text(shortcutLine)
                     .foregroundStyle(.white.opacity(0.35))
             }
             .font(.system(size: 10, design: .monospaced))
         }
+    }
+
+    /// The arrows change pitch only where there is no function row to do it —
+    /// on the diatonic map they are notes, and claiming otherwise would send
+    /// the user pressing a key that plays C3.
+    private var shortcutLine: String {
+        let arrows = instrument.layout.accidentalKeys.isEmpty
+            ? "" : "↑↓ hold ♯♭ · ←→ transpose · "
+        return arrows + "⌘L layout · ⌘R rollover · ⌘1–4 timbre · ⌘E record · ⌥⌘E video · ⌘, preferences"
     }
 
     /// The function row only reaches a key monitor when macOS is sending real

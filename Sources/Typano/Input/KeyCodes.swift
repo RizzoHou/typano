@@ -66,6 +66,7 @@ enum KC {
     static let control: UInt16 = 59
     static let rightShift: UInt16 = 60
     static let rightOption: UInt16 = 61
+    static let rightControl: UInt16 = 62
     static let rightCommand: UInt16 = 54
     static let function: UInt16 = 63
 

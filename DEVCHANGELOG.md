@@ -2,6 +2,24 @@
 
 The append-only development record for Typano: why things changed, what was tried, and what it cost. Newest entry first; entries are never edited or removed — a reversed decision gets a new entry naming what it supersedes. Standing rules and invariants live in `CLAUDE.md`, not here; user-facing release notes would live in `CHANGELOG.md`.
 
+## 2026-08-25 — Mac mode, and the right hand FreePiano actually ships
+
+- **What**: Two corrections to the same day's external-keyboard work, both from playing it. The 98/full-size bottom rows are now drawn as the board reports itself in **Mac mode** — Alt sends ⌘, Win sends ⌥, Ctrl stays ⌃ — so the sustain latch is right ⌘ on all three keyboards and the Esc latch is gone. The diatonic right hand is now the arrow cluster plus the keypad: 21 keys, C3–B5, exactly three octaves.
+
+- **Why Esc was wrong**: it was invented to solve a problem that does not exist. The premise was "a 98 ends its bottom row Alt / Fn with no right ⌘", which is true of the *keycaps* and false of the *key codes* — every PC board sold here has a Mac mode, and in it the Alt right of the space bar is right ⌘. The drawing said `rightOption` for that key, which is what made the board look like it had no latch. Two keys that both latch is also worse than one: the habit built on the built-in keyboard is the thing worth preserving.
+
+- **Why the arrows became notes**: F3/F4 already carry the key signature, which is FreePiano's own answer to accidentals, so the held-♯/♭ arrows were paying for a function the function row already provides. `Layout.accidentalKeys` is now derived from the map and `refreshAccidental` reads it — asking `held.contains(KC.up)` directly would have bent the whole keyboard a semitone for as long as ↑ rang as F3.
+
+- **What FreePiano's map actually says**: fetched `data/freepiano.map` from a mirror of the SourceForge tree (`tiwb/freepiano` on GitHub is DMCA-blocked). Its right hand is 27 keys, not 21: `left down right up` = C3–F3, then the keypad to B5, then `Del End PgDn Ins Home PgUp` = C6–A6. The first 21 are shipped verbatim. The last six are deliberately dropped — a 98 arranges that cluster differently on every board and often omits it, and one mapping that plays identically on both external boards is worth more than six notes at the top of the register. Restoring them is one line in `rightRun`.
+
+- **Why the 98's editing keys are no longer drawn at all**: the previous entry recorded them as an unverifiable guess; they were also wrong. Now that nothing is mapped there, drawing a guessed key is strictly worse than drawing none — it invites pressing something that does nothing.
+
+- **Files**: `Sources/Typano/Model/{Layout,Layouts,KeyboardModel,Instrument}.swift`, `Sources/Typano/UI/{PhysicalKeyboard,ContentView,PreferencesView}.swift`, `Sources/Typano/Audio/SoundCheck.swift`, `Sources/Typano/Input/KeyCodes.swift`, `CLAUDE.md`
+
+- **Verify**: `--check-layout` PASS, with two new assertions that would have caught the first bug from Linux — every mapped note key must appear in that model's drawn geometry, and both external models must draw a right ⌘. Also asserts the run is 21 keys spanning C3–B5, that the arrows are notes on the diatonic map and controls on the chord grid, and that Esc is unbound. `--check-sound`, `--check-restart`, `--check-recording` still pass; installed and smoke-tested on the 98 in the GUI.
+
+- **Supersedes**: the "three deviations" and "not verified" bullets of *2026-08-25 — The mapping follows the keyboard, after FreePiano*.
+
 ## 2026-08-25 — The mapping follows the keyboard, after FreePiano
 
 - **What**: One mapping became three keyboards. The built-in MacBook keeps the melody-plus-chord-grid layout; external 98 and full-size (ANSI 104/108) boards get FreePiano's default map key for key — four diatonic rows across the main block, the numeric keypad and editing cluster carrying the right hand. Picked from Instrument ▸ Keyboard or Preferences, persisted. New `--check-layout` asserts the maps.

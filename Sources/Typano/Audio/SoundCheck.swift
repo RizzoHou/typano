@@ -144,10 +144,26 @@ enum SoundCheck {
                    "\(model.title): every row is \(model.unitsPerRow)u (got \(widths))")
             expect(!model.layouts.isEmpty, "\(model.title): has a layout")
 
+            let drawn = Set(model.rows.flatMap { $0.compactMap(\.code) })
             for layout in model.layouts {
                 let both = layout.keys(.left).intersection(layout.keys(.right))
                 expect(both.isEmpty,
                        "\(model.title)/\(layout.name): hands do not overlap")
+
+                // A key that is mapped but not on the board is a note the user
+                // can never play — the failure the drawn keyboard exists to
+                // make visible, and the one thing here Linux can still check.
+                let missing = layout.keys(.left).union(layout.keys(.right)).subtracting(drawn)
+                expect(missing.isEmpty,
+                       "\(model.title)/\(layout.name): every mapped note key is on the board"
+                       + " (missing \(missing.sorted().map(String.init).joined(separator: " ")))")
+            }
+
+            if model != .macBook {
+                // Mac mode puts ⌘ on the Alt key right of the space bar, which
+                // is where the sustain latch lives on all three keyboards.
+                expect(drawn.contains(KC.rightCommand),
+                       "\(model.title): draws a right ⌘ (the Alt key in Mac mode)")
             }
         }
 
@@ -161,16 +177,17 @@ enum SoundCheck {
             (KC.rightShift, 53, "right shift = F3"),
             (KC.ret, 67, "return = G4"), (KC.backslash, 81, "\\ = A5"),
             (KC.delete, 93, "backspace = A6"),
-            (KC.keypad0, 55, "keypad 0 = G3"), (KC.keypad1, 60, "keypad 1 = C4"),
+            (KC.left, 48, "← = C3"), (KC.up, 53, "↑ = F3"),
+            (KC.keypad0, 55, "keypad 0 = G3"), (KC.keypadEnter, 59, "keypad enter = B3"),
+            (KC.keypad1, 60, "keypad 1 = C4"),
             (KC.keypad9, 74, "keypad 9 = D5"), (KC.keypadMinus, 83, "keypad − = B5"),
-            (KC.forwardDelete, 84, "del = C6"), (KC.pageUp, 93, "pgup = A6"),
         ]
         for (code, midi, label) in anchors {
             expect(note(d, code) == midi,
                    "diatonic: \(label) (got \(note(d, code).map(String.init) ?? "nothing"))")
         }
         expect(d.keys(.left).count == 53, "diatonic: 53 left-hand keys (got \(d.keys(.left).count))")
-        expect(d.keys(.right).count == 23, "diatonic: 23 right-hand keys (got \(d.keys(.right).count))")
+        expect(d.keys(.right).count == 21, "diatonic: 21 right-hand keys (got \(d.keys(.right).count))")
         expect(!d.rightPlaysChords, "diatonic: right hand plays notes, not chords")
 
         // MARK: chord grid anchors — unchanged by the diatonic work
@@ -188,29 +205,36 @@ enum SoundCheck {
         // Note rows and control keys are merged into one table with the notes
         // winning, so a row extended one key too far would silently swallow a
         // control and the only symptom would be a control that stopped working.
-        for layout in [d, f] {
-            func isControl(_ code: UInt16, _ label: String) {
-                let ok: Bool
-                switch layout.actions[code] {
-                case .pedal, .sustainLatch, .accidental, .transpose, .octave, .velocity: ok = true
-                default: ok = false
-                }
-                expect(ok, "\(layout.name): \(label) is still a control")
+        func isControl(_ layout: Layout, _ code: UInt16, _ label: String) {
+            let ok: Bool
+            switch layout.actions[code] {
+            case .pedal, .sustainLatch, .accidental, .transpose, .octave, .velocity: ok = true
+            default: ok = false
             }
-            isControl(KC.space, "space")
-            isControl(KC.escape, "esc")
-            isControl(KC.rightCommand, "right ⌘")
-            isControl(KC.f16, "F16")
-            isControl(KC.up, "↑")
-            isControl(KC.down, "↓")
-            isControl(KC.left, "←")
-            isControl(KC.right, "→")
+            expect(ok, "\(layout.name): \(label) is still a control")
+        }
+        for layout in [d, f] {
+            isControl(layout, KC.space, "space")
+            isControl(layout, KC.rightCommand, "right ⌘")
+            isControl(layout, KC.f16, "F16")
             for (code, label) in [(KC.f3, "F3"), (KC.f4, "F4"), (KC.f5, "F5"), (KC.f6, "F6"),
                                   (KC.f7, "F7"), (KC.f8, "F8"), (KC.f9, "F9"), (KC.f10, "F10"),
                                   (KC.f11, "F11"), (KC.f12, "F12")] {
-                isControl(code, label)
+                isControl(layout, code, label)
             }
         }
+
+        // The arrows are the one place the two families genuinely disagree:
+        // pitch controls where there is no reachable function row, notes where
+        // there is. `refreshAccidental` reads the map rather than ↑/↓ for
+        // exactly this reason, so assert both sides of it.
+        for (code, label) in [(KC.up, "↑"), (KC.down, "↓"), (KC.left, "←"), (KC.right, "→")] {
+            isControl(f, code, label)
+            expect(note(d, code) != nil, "diatonic: \(label) is a note")
+        }
+        expect(d.accidentalKeys.isEmpty, "diatonic: nothing bends the pitch by hand")
+        expect(f.accidentalKeys.count == 2, "fifths: ↑ and ↓ bend the pitch")
+        expect(d.actions[KC.escape] == nil, "diatonic: esc is unbound")
 
         // MARK: the column invariant
         //
@@ -240,8 +264,9 @@ enum SoundCheck {
         let rightNotes = d.keys(.right).compactMap { note(d, $0) }
         expect(Set(rightNotes).count == rightNotes.count,
                "diatonic: the right hand repeats no note")
-        expect(rightNotes.min() == 55 && rightNotes.max() == 93,
-               "diatonic: the right hand spans G3–A6 (got \(rightNotes.min() ?? -1)–\(rightNotes.max() ?? -1))")
+        expect(rightNotes.min() == 48 && rightNotes.max() == 83,
+               "diatonic: the right hand spans C3–B5 (got \(rightNotes.min() ?? -1)–\(rightNotes.max() ?? -1))")
+        expect(rightNotes.count == 21, "diatonic: the right hand is three octaves, 21 keys")
 
         print(failures.isEmpty ? "layout: PASS" : "layout: FAIL (\(failures.count))")
         return failures.isEmpty

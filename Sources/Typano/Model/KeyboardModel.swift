@@ -10,7 +10,7 @@ import Foundation
 enum KeyboardModel: String, CaseIterable, Identifiable {
     /// Built-in ANSI MacBook keyboard.
     case macBook
-    /// External 98 — full keypad, editing keys in one column, sunken arrows.
+    /// External 98 — full keypad, sunken arrows, no editing cluster drawn.
     case compact98
     /// External ANSI full size, the 104/108 boards.
     case fullSize
@@ -30,9 +30,9 @@ enum KeyboardModel: String, CaseIterable, Identifiable {
         case .macBook:
             return "Built-in keyboard. Limited rollover, so the right hand plays one key per chord."
         case .compact98:
-            return "External 98. Keypad and editing column carry the right hand."
+            return "External 98 in Mac mode — Alt sends ⌘, Win sends ⌥. Arrows and keypad carry the right hand."
         case .fullSize:
-            return "External 104/108 (ANSI). Keypad and editing cluster carry the right hand."
+            return "External 104/108 (ANSI) in Mac mode — Alt sends ⌘, Win sends ⌥. Arrows and keypad carry the right hand."
         }
     }
 

@@ -410,11 +410,12 @@ final class Instrument: ObservableObject {
     }
 
     /// Derived from the held set rather than tracked per event, so releasing
-    /// one arrow while the other is still down falls back correctly.
+    /// one arrow while the other is still down falls back correctly — and read
+    /// through the layout rather than off ↑/↓ directly, because on the
+    /// diatonic map those keys are notes and holding one would otherwise bend
+    /// the whole keyboard a semitone for as long as it rang.
     private func refreshAccidental() {
-        if held.contains(KC.up) { accidental = 1 }
-        else if held.contains(KC.down) { accidental = -1 }
-        else { accidental = 0 }
+        accidental = held.compactMap { layout.accidentalKeys[$0] }.max() ?? 0
     }
 
     /// Semitones added to that hand's notes as currently configured.

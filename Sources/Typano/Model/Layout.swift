@@ -65,6 +65,10 @@ struct Layout {
     /// Keys owned by each hand, for the rollover tester — it reports the two
     /// sides separately, and which side the matrix limits is the question.
     let handKeys: [Hand: Set<UInt16>]
+    /// Keys held to bend every note, and by how much. Empty on a layout where
+    /// the arrows are notes, which is exactly why this is read from the map
+    /// rather than assumed: `held` still contains ↑ when ↑ is F3.
+    let accidentalKeys: [UInt16: Int]
 
     init(name: String,
          leftRule: String,
@@ -79,6 +83,7 @@ struct Layout {
 
         var left: Set<UInt16> = []
         var right: Set<UInt16> = []
+        var accidentals: [UInt16: Int] = [:]
         var chords = false
         for (code, action) in actions {
             switch action.role {
@@ -87,9 +92,11 @@ struct Layout {
             default:         break
             }
             if case .chord = action { chords = true }
+            if case .accidental(let delta) = action { accidentals[code] = delta }
         }
         self.rightPlaysChords = chords
         self.handKeys = [.left: left, .right: right]
+        self.accidentalKeys = accidentals
     }
 
     func defaultVelocity(_ hand: Hand) -> Int { startVelocity[hand] ?? 100 }
